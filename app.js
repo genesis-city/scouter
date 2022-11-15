@@ -1,6 +1,6 @@
 const axios = require('axios');
 const inquirer = require('inquirer');
-const { Console, dir } = require('console');
+const { Console, dir} = require('console');
 const fs = require('fs');
 const { Int32, ConnectionCheckOutStartedEvent } = require('mongodb');
 let mongoose = require('mongoose')
@@ -27,37 +27,37 @@ const choices = [
   // 'Delete database',
   'Estate tests'];
 
-inquirer
-  .prompt([
-    {
-      type: 'list',
-      name: 'mode',
-      message: 'What do you want to do?',
-      choices: choices,
-    },
-  ])
-  .then(answers => {
-    switch (answers.mode) {
-      case choices[0]:
-        run().catch(error => logMessage(error.stack))
-        break;
-      case choices[1]:
-        markAllAsClean().catch(error => logMessage(error.stack))
-        break;
-      case choices[2]:
-        roundCoordsForUnity().catch(error => logMessage(error.stack))
-        break;
-      // case choices[3]:
-      //   deleteDatabase().catch(error => logMessage(error.stack))
-      //   break;
-      case choices[3]:
-        getEstates().catch(error => logMessage(error.stack))
-        break;
-      default:
-        logMessage('Option not found');
-        process.exit();
-    }
-  });
+// inquirer
+//   .prompt([
+//     {
+//       type: 'list',
+//       name: 'mode',
+//       message: 'What do you want to do?',
+//       choices: choices,
+//     },
+//   ])
+//   .then(answers => {
+//     switch (answers.mode) {
+//       case choices[0]:
+//         run().catch(error => logMessage(error.stack))
+//         break;
+//       case choices[1]:
+//         markAllAsClean().catch(error => logMessage(error.stack))
+//         break;
+//       case choices[2]:
+//         roundCoordsForUnity().catch(error => logMessage(error.stack))
+//         break;
+//       // case choices[3]:
+//       //   deleteDatabase().catch(error => logMessage(error.stack))
+//       //   break;
+//       case choices[3]:
+  //       getEstates().catch(error => logMessage(error.stack))
+  //       break;
+  //     default:
+  //       logMessage('Option not found');
+  //       process.exit();
+  //   }
+  // });
 
 async function run() {
   logMessage("Full run started")
@@ -271,8 +271,11 @@ async function roundCoordsForUnity() {
   process.exit()
 }
 
-const parcelSize = 40
-const mapSize = 152
+// TODO: revert!
+// const parcelSize = 40
+// const mapSize = 152
+const parcelSize = 10
+const mapSize = 150
 
 function generateGeoJson(coords) {
   // console.log(allRaw)
@@ -310,18 +313,51 @@ function getCurrentDateAndTime() {
 //////////////////////////////////////////////////////////
 async function getEstates() {
   try {
-    const response = await axios.get(`https://nft-api.decentraland.org/v1/nfts?first=1000&skip=0&sortBy=newest&category=estate`)
+    const fname = 'estates-raw.txt';
+    let response = null;
+    let exists = false
+    try {
+      exists = fs.existsSync(fname)
+    } catch(err) {
+    }
+    if (exists) {
+      const fdata = JSON.parse(fs.readFileSync(fname))
+      response = {data: fdata};
+    } else {
+      response = await axios.get(`https://api.decentraland.org/v1/tiles`)
+      console.log(response.data, typeof(response.data))
+      fs.writeFileSync(fname, JSON.stringify(response.data));
+    }
+    const tiles = response.data.data;
+    // all tiles
+    console.log(Object.entries(tiles).length, 'total tiles');
+    // tiles belonging to an estate
+    tilesInEstate = Object.entries(tiles).filter(([coord, info]) => 'estate_id' in info);
+    console.log(tilesInEstate.length, 'tiles within estate')
+
+    // build tiles for each estate id
+    tilesForEstate = {}
+    tilesInEstate.every(([_, info]) => {
+      if (!tilesForEstate[info.estate_id]) {
+        tilesForEstate[info.estate_id] = []
+      }
+      tilesForEstate[info.estate_id].push(info)
+      return true;
+    })
+    console.log(Object.entries(tilesForEstate).length, 'estates total containing', tilesInEstate.length, 'tiles');
+    
     let estates = []
-    response.data.data.forEach(estate => {
-      estates.push(drawEstate(estate.nft.data.estate.parcels))
+    Object.entries(tilesForEstate).every(([estate_id, tiles]) => {
+      estates.push(drawEstate(estate_id, tiles))
+      return estates.length == 0; // stop at first
     })
 
     // let mocked = mockEstate()
     // estates.push(drawEstate(mocked.nft.data.estate.parcels))
 
     // console.log("Drawing RESULT", estates)
-    console.log("Parcels length:", estates.length)
-    generateEstatesJSON(estates)
+    console.log("estates length:", estates.length)
+    //generateEstatesJSON(estates)
     process.exit()
   } catch(err) {
     logMessage(err)
@@ -329,31 +365,103 @@ async function getEstates() {
   }
 }
 
-function drawEstate(estate) {
-  console.log("Drawing estate:", estate)
-  let estateData = estate.map(el => {
-    return {coord: el, points: estateToPoints(el)}
+function addAll(set, iter) {
+  iter.map(JSON.stringify).forEach(set.add.bind(set));
+}
+
+function remove(list, elem) {
+  list.splice(list.indexOf(elem), 1);
+}
+
+function findAdjacent(vertices, queue) {
+  // console.log('finding new adjacent point');
+  const vsize = vertices.size;
+  const qsize = queue.length;
+  for(const pending of queue) {
+    // console.log('considering', pending.center);
+    const simulate = new Set(vertices);
+    addAll(simulate, pending.points);
+    // console.log('simulate', simulate);
+    // console.log('pending.points', pending.points);
+    const delta = simulate.size - vertices.size;
+    // console.log('vertices', vertices.size, 'simulate', simulate.size, 'delta', delta);
+    // if adding points to the vertex set adds less than 2 vertices then it must be a neighbor.
+    // (otherwise it will add 3 or 4 new points to the set)
+    if (delta <= 2) {
+      assert(vertices.size === vsize, 'vertices changed size and it shouldnt');
+      assert(queue.length === qsize, 'queue changed length and it shouldnt');
+      return pending;
+    }
+  }
+  assert(false, 'no adjacent found!!')
+}
+
+const assert = function(condition, message) {
+  if (!condition)
+      throw Error('Assert failed: ' + (message || ''));
+};
+
+function drawEstate(estate_id, tiles) {
+  console.log("Drawing estate:", estate_id, tiles.length);
+  let queue = tiles.map(tile => {
+    const center = {x: tile.x, y: tile.y}
+    return {center: center, points: estateToPoints(center)}
   })
 
-  var first = estateData.splice(0, 1)[0]
-  console.log("first", first)
+  const first = queue[0];
+  // remove first from estateData
+  queue = queue.filter(item => item !== first);
+  // console.log('first', first);
+
+  const centers = new Set();
+  centers.add(first.center);
+  const vertices = new Set();
+  addAll(vertices, first.points);
+  
+  // calculate all vertices
+  while (queue.length > 0) {
+    console.log('>>>> iteration', queue.length);
+    console.log('>>>> vertices', vertices);
+    console.log('>>>> centers', centers);
+    // get an adjacent center 
+    const adjacent = findAdjacent(vertices, queue);
+
+    // add it to the set of vertices
+    addAll(vertices, adjacent.points);
+
+    // add it to the set of centers
+    centers.add(adjacent.center);
+
+    // remove it from the queue
+    remove(queue, adjacent);
+  }
+
+  // remove internal vertices
+
+
+
+  //estateData.map(console.log);
+  return;
+  console.log(queue)
+  //var first = estateData.splice(0, 1)[0]
+  // console.log("first", first)
   var coordsApplied = [first.coord]
-  console.log("coordsApplied", coordsApplied)
+  // console.log("coordsApplied", coordsApplied)
   var drawing = first.points
-  while (estateData.length > 0) {
-    let adjacentData = getAdjacentCoord(coordsApplied, estateData)
+  while (queue.length > 0) {
+    let adjacentData = getAdjacentCoord(coordsApplied, queue)
     let adjacent = adjacentData[0]
-    estateData.splice(estateData.indexOf(adjacent), 1)
+    queue.splice(queue.indexOf(adjacent), 1)
     let indices = []
-    console.log("adjacent found", adjacent)
+    // console.log("adjacent found", adjacent)
     for (var i = adjacent.points.length - 1; i >= 0; i--) {
       var currentAdjacent = adjacent.points[i]
       for (var j = drawing.length - 1; j >= 0; j--) {
         var currentDrawing = drawing[j]
         if ((currentAdjacent.x === currentDrawing.x) && (currentAdjacent.y === currentDrawing.y)) {
-          console.log("i", i, adjacent.points.length, "j", j, drawing.length)
+          // console.log("i", i, adjacent.points.length, "j", j, drawing.length)
           indices.push(j)
-          console.log("Removing from draw", currentAdjacent)
+          // console.log("Removing from draw", currentAdjacent)
           adjacent.points.splice(i, 1)
           drawing.splice(j, 1)
         }
@@ -361,7 +469,7 @@ function drawEstate(estate) {
     }
 
     if (indices.length === 0) {
-      console.log("INDICES LENGHT 0")
+      // console.log("INDICES LENGHT 0")
       indices = [getIndexFor(adjacentData, drawing)]
     }
 
@@ -505,3 +613,15 @@ function rotate(arr, count) {
 function mockEstate() {
   return JSON.parse('{"nft":{"id":"0x959e104e1a4db6317fa58f8295f586e1a978c297-3847","tokenId":"3847","contractAddress":"0x959e104e1a4db6317fa58f8295f586e1a978c297","activeOrderId":"0x7068c5480f4f73895395e216ea32e45d81ae758c4e13f0db43fce0df3d2e3070","openRentalId":null,"owner":"0x3a572361910939dfc230bc010dadc9de7bd3af4b","name":"South  left gate","image":"https://api.decentraland.org/v1/estates/3847/map.png","url":"/contracts/0x959e104e1a4db6317fa58f8295f586e1a978c297/tokens/3847","data":{"estate":{"description":"South  left gate!","size":13,"parcels":[{"x":-2,"y":-150},{"x":-2,"y":-144},{"x":-2,"y":-143},{"x":-2,"y":-142},{"x":-1,"y":-150},{"x":-1,"y":-149},{"x":-1,"y":-148},{"x":-1,"y":-147},{"x":-1,"y":-146},{"x":-1,"y":-145},{"x":-1,"y":-144},{"x":-1,"y":-143},{"x":-1,"y":-142}]}},"issuedId":null,"itemId":null,"category":"estate","network":"ETHEREUM","chainId":1,"createdAt":1601652467000,"updatedAt":1663477751000,"soldAt":0},"order":{"id":"0x7068c5480f4f73895395e216ea32e45d81ae758c4e13f0db43fce0df3d2e3070","marketplaceAddress":"0x8e5660b4ab70168b5a6feea0e0315cb49c8cd539","contractAddress":"0x959e104e1a4db6317fa58f8295f586e1a978c297","tokenId":"3847","owner":"0x3a572361910939dfc230bc010dadc9de7bd3af4b","buyer":null,"price":"1755001000000000000000000","status":"open","network":"ETHEREUM","chainId":1,"expiresAt":1671667200000,"createdAt":1643357946000,"updatedAt":1643357946000},"rental":null}')
 }
+
+// test findAdjacent
+// console.log(estateToPoints( {"x":-150, "y":-150}));
+// console.log(estateToPoints( {"x":-149, "y":-150}));
+// const p0s = estateToPoints( {"x":-150, "y":-150});
+// const vs = new Set();
+// addAll(vs, p0s);
+// const ret = findAdjacent(vs, [{center: {"x":-149, "y":-150}, points: estateToPoints( {"x":-149, "y":-150})}])
+// console.log(ret);
+// return
+
+getEstates().catch(error => logMessage(error.stack))
