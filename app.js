@@ -274,7 +274,7 @@ async function roundCoordsForUnity() {
 // TODO: revert!
 // const parcelSize = 40
 // const mapSize = 152
-const parcelSize = 10
+const parcelSize = 40
 const mapSize = 150
 
 function generateGeoJson(coords) {
@@ -325,7 +325,6 @@ async function getEstates() {
       response = {data: fdata};
     } else {
       response = await axios.get(`https://api.decentraland.org/v1/tiles`)
-      console.log(response.data, typeof(response.data))
       fs.writeFileSync(fname, JSON.stringify(response.data));
     }
     const tiles = response.data.data;
@@ -347,8 +346,11 @@ async function getEstates() {
     console.log(Object.entries(tilesForEstate).length, 'estates total containing', tilesInEstate.length, 'tiles');
     
     let allPolygons = []
-    const w = 4;
-    Object.entries(tilesForEstate).slice(w,w+1).every(([estate_id, tiles]) => {
+    // const w = 4;
+    Object.entries(tilesForEstate)/*.slice(w,w+1)*/.every(([estate_id, tiles]) => {
+      if (estate_id != "4274") {
+        return true;
+      }
       const estatePolygons = drawEstate(estate_id, tiles);
       estatePolygons.every((polygon) => {
         polygon.estate_id = estate_id;
@@ -411,7 +413,7 @@ function drawEstate(estate_id, tiles) {
   console.log("Drawing estate:", estate_id, tiles.length);
   let queue = tiles.map(tile => {
     const center = {x: tile.x, y: tile.y}
-    return {center: center, points: estateToPoints(center)}
+    return {center: center, points: centerToVertices(center)}
   })
 
   const first = queue[0];
@@ -447,7 +449,9 @@ function drawEstate(estate_id, tiles) {
   const removeMe = [];
   Array.from(vertices).every((vs) => {
     const v = JSON.parse(vs);
-    // console.log('v', v);
+    console.log('v', v);
+
+    // neighbor vertices
     const neighbors = [
       {x: v.x-parcelSize, y: v.y}, //left
       {x: v.x+parcelSize, y: v.y}, // right
@@ -458,7 +462,15 @@ function drawEstate(estate_id, tiles) {
     const allNeighborsPresent = neighbors.every((n)=>{
       return vertices.has(JSON.stringify(n));
     });
-    if (allNeighborsPresent) {
+
+    // neighbor centers
+    const vcenters = cache[v.x][v.y]
+    console.log(centers);
+    const allCentersPresent = vcenters.every((vc) => {
+      return centers.has(vc);
+    })
+
+    if (allNeighborsPresent && allCentersPresent) {
       removeMe.push(v);
     }
     return true;
@@ -519,14 +531,28 @@ function drawEstate(estate_id, tiles) {
   return drawing
 }
 
-function estateToPoints(coords /* {"x":0, "y":0} */) {
+const cache = {}
+function centerToVertices(center /* {"x":0, "y":0} */) {
   // TODO: revert this!
   // TODO: changed for ease of manual checks, revert to totti's original
-  let x = coords.x// + mapSize
-  let y = coords.y// + mapSize
+  let x = center.x + mapSize
+  let y = center.y + mapSize
   x = x * parcelSize
   y = y * parcelSize
-  return [{"x": x,"y": y},{"x": x,"y": y+parcelSize},{"x": x+parcelSize,"y": y+parcelSize},{"x": x+parcelSize,"y": y}]
+  const ret = [{"x": x,"y": y},{"x": x,"y": y+parcelSize},{"x": x+parcelSize,"y": y+parcelSize},{"x": x+parcelSize,"y": y}]
+  ret.every((p)=>{
+    if (!cache[p.x]) cache[p.x] = {}
+    if (!cache[p.x][p.y]) cache[p.x][p.y] = []
+    cache[p.x][p.y].push(center)
+    return true;
+  })
+  // console.log(cache);
+  // console.log(cache[x][y])
+  // process.exit(1);
+  return ret;
+}
+function vertexToCenters(vertex) {
+
 }
 
 function generateEstatesJSON(estates) {
@@ -572,10 +598,6 @@ function rotate(arr, count) {
 
 
 
-// function generateEstatesJSON(parcels) {
-
-// }
-
 const { createCanvas } = require('canvas')
 function normalizeVertices(string_vertices) {
 
@@ -591,7 +613,7 @@ function normalizeVertices(string_vertices) {
   });
 
   return padded.map((v)=>{
-    return {x: v.x/1, y: v.y/1};
+    return {x: v.x/parcelSize, y: v.y/parcelSize};
   });
 }
 function normalizeCenters(center_set) {
@@ -616,16 +638,18 @@ function drawPolygon({vertices, centers, estate_id}) {
   const width = 500;
   const height = 500;
   const canvas = createCanvas(width, height);
+  const drawScale = 20;
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, width, height);
   ctx.fillStyle = '#ffaaaa';
   Array.from(normCenters).map((c)=>{
-    ctx.fillRect(c.x*10+100+1,c.y*10+100+1,8,8);
+    ctx.fillRect(c.x*drawScale+100+drawScale/10,c.y*drawScale+100+drawScale/10,4*drawScale/5,4*drawScale/5);
   })
   ctx.fillStyle = 'blue';
   normalized.map((v) => {
-    ctx.fillRect(v.x+100-1,v.y+100-1,2,2);
+    console.log(v)
+    ctx.fillRect(v.x*drawScale+100-1,v.y*drawScale+100-drawScale/10,drawScale/5,drawScale/5);
   });
   const buffer = canvas.toBuffer('image/png');
   fs.writeFileSync('./image.png', buffer);
