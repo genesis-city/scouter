@@ -348,7 +348,7 @@ async function getEstates() {
     let allPolygons = []
     // const WWW  = 7;
     Object.entries(tilesForEstate)/*.slice(WWW,WWW+1)*/.every(([estate_id, tiles]) => {
-      if (estate_id != "1817") {
+      if (estate_id != "4274") { //1817 hardcore
         return true;
       }
       const estatePolygons = drawEstate(estate_id, tiles);
@@ -365,7 +365,7 @@ async function getEstates() {
     // console.log("Drawing RESULT", estates)
     console.log("estates length:", allPolygons.length)
     drawPolygon(allPolygons[0]);
-    //generateEstatesJSON(estates)
+    generateEstatesJSON(allPolygons)
     process.exit()
   } catch(err) {
     logMessage(err)
@@ -434,7 +434,7 @@ function drawEstate(estate_id, tiles) {
     // console.log('>>>> centers', centers);
 
     // get an adjacent center 
-    const adjacent = findAdjacent(vertices, queue);
+    const adjacent = queue[0];
 
     // add it to the set of vertices
     addAll(vertices, adjacent.points);
@@ -443,14 +443,14 @@ function drawEstate(estate_id, tiles) {
     centers.add(adjacent.center);
 
     // add new edges to the set of border edges
-    console.log('edges!')
+    // console.log('edges!')
     adjacent.edges.every(([A, B]) => {
-      console.log('edge', A, B);
+      // console.log('edge', A, B);
       // remove existing edge if present
       const AB = JSON.stringify([A,B]);
       const BA = JSON.stringify([B,A]);
       if (border.has(AB) || border.has(BA)) {
-        console.log('removing edge', AB);
+        // console.log('removing edge', AB);
         border.delete(AB);
         border.delete(BA);
       } 
@@ -458,10 +458,9 @@ function drawEstate(estate_id, tiles) {
       else {
         border.add(AB);
       }
-
       return true;
     });
-    console.log('border', border);
+    // console.log('border', border);
 
     // remove it from the queue
     remove(queue, adjacent);
@@ -497,12 +496,12 @@ function drawEstate(estate_id, tiles) {
     }
     return true;
   })
-  console.log('remove set', removeMe.length);
-  console.log('size pre remove', vertices.size);
+  // console.log('remove set', removeMe.length);
+  // console.log('size pre remove', vertices.size);
   assert(removeMe.every((toRemove) => {
     return vertices.delete(JSON.stringify(toRemove));
   }), 'tried to removed non-existing vertex from vertices');
-  console.log('size post remove', vertices.size);
+  // console.log('size post remove', vertices.size);
 
   const polygon = {
     vertices: vertices,
@@ -545,22 +544,27 @@ function vertexToCenters(vertex) {
   return ret
 }
 
-function generateEstatesJSON(estates) {
-  let polygons = estates.map(estate => {
-    return generatePolygonJson(estate)
+function generateEstatesJSON(polygons) {
+  let polygonJSONs = polygons.map(polygon => {
+    return generatePolygonJson(polygon);
   })
   
-  let estatesJson = JSON.stringify({"type":"FeatureCollection", "crs": {"type": "name", "properties": {"name": "ESTATES"}}, "features":polygons})
-  estatesJsonFile.write(estatesJson)
-  estatesJsonFile.end()
+  let estatesJson = JSON.stringify({"type":"FeatureCollection", "crs": {"type": "name", "properties": {"name": "ESTATES"}}, "features":polygonJSONs}, null, 1)
+  fs.writeFileSync('estates.json', estatesJson);
+  // estatesJsonFile.write(estatesJson)
+  // estatesJsonFile.end()
   console.log("Estates json created")
 }
 
-function generatePolygonJson(estate) {
-  var result = estate.map(point => {
-    return [point.x, point.y]
+function generatePolygonJson(polygon) {
+  // console.log('generateJSON', polygon)
+  var result = [];
+  Array.from(polygon.border).map((edge_str) => {
+    [A, B] = JSON.parse(edge_str);
+    result.push([A.x, A.y])
+    result.push([B.x, B.y]);
   })
-  return {"type":"Feature","geometry": {"type":"Polygon","coordinates":[result]}}
+  return {"type":"Feature","geometry": {"type":"LineString","coordinates":[result]}}
 }
 /////////////////////  ESTATES END  /////////////////////
 
@@ -628,15 +632,13 @@ function normalizeBorder(border_string) {
 }
 function drawPolygon({vertices, centers, border, estate_id}) {
   const normalized = normalizeVertices(vertices);
-  console.log(normalized);
   const normCenters = normalizeCenters(centers);
-  console.log(normCenters);
   const normBorder = normalizeBorder(border);
   
-  const width = 500;
-  const height = 500;
+  const width = 800;
+  const height = 800;
   const canvas = createCanvas(width, height);
-  const drawScale = 20;
+  const drawScale = 10;
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, width, height);
@@ -652,9 +654,8 @@ function drawPolygon({vertices, centers, border, estate_id}) {
   });
   // edges
   ctx.fillStyle = 'green';
-  console.log('normBorder #', normBorder.length);
+  // console.log('normBorder #', normBorder.length);
   normBorder.map(([A, B]) => {
-    console.log([A, B])
     const dx = B.x - A.x;
     const dy = B.y - A.y;
 
