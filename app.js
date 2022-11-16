@@ -346,11 +346,11 @@ async function getEstates() {
     console.log(Object.entries(tilesForEstate).length, 'estates total containing', tilesInEstate.length, 'tiles');
     
     let allPolygons = []
-    // const w = 4;
-    Object.entries(tilesForEstate)/*.slice(w,w+1)*/.every(([estate_id, tiles]) => {
-      if (estate_id != "4274") {
-        return true;
-      }
+    const WWW = 4;
+    Object.entries(tilesForEstate).slice(WWW,WWW+1).every(([estate_id, tiles]) => {
+      // if (estate_id != "1817") {
+      //   return true;
+      // }
       const estatePolygons = drawEstate(estate_id, tiles);
       estatePolygons.every((polygon) => {
         polygon.estate_id = estate_id;
@@ -413,7 +413,7 @@ function drawEstate(estate_id, tiles) {
   console.log("Drawing estate:", estate_id, tiles.length);
   let queue = tiles.map(tile => {
     const center = {x: tile.x, y: tile.y}
-    return {center: center, points: centerToVertices(center)}
+    return {center: center, points: centerToVertices(center), edges: centerToEdges(center)}
   })
 
   const first = queue[0];
@@ -425,7 +425,8 @@ function drawEstate(estate_id, tiles) {
   centers.add(first.center);
   const vertices = new Set();
   addAll(vertices, first.points);
-  
+  const border = new Set();
+  addAll(border, first.edges);
   // calculate all vertices
   while (queue.length > 0) {
     // console.log('>>>> iteration', queue.length);
@@ -441,6 +442,27 @@ function drawEstate(estate_id, tiles) {
     // add it to the set of centers
     centers.add(adjacent.center);
 
+    // add new edges to the set of border edges
+    console.log('edges!')
+    adjacent.edges.every(([A, B]) => {
+      console.log('edge', A, B);
+      // remove existing edge if present
+      const AB = JSON.stringify([A,B]);
+      const BA = JSON.stringify([B,A]);
+      if (border.has(AB) || border.has(BA)) {
+        console.log('removing edge', AB);
+        border.delete(AB);
+        border.delete(BA);
+      } 
+      // otherwise, add it!
+      else {
+        border.add(AB);
+      }
+
+      return true;
+    });
+    console.log('border', border);
+
     // remove it from the queue
     remove(queue, adjacent);
   }
@@ -449,7 +471,7 @@ function drawEstate(estate_id, tiles) {
   const removeMe = [];
   Array.from(vertices).every((vs) => {
     const v = JSON.parse(vs);
-    console.log('v', v);
+    // console.log('v', v);
 
     // neighbor vertices
     const neighbors = [
@@ -464,8 +486,8 @@ function drawEstate(estate_id, tiles) {
     });
 
     // neighbor centers
-    const vcenters = cache[v.x][v.y]
-    console.log(centers);
+    const vcenters = vertexToCenters(v);
+    // console.log(centers);
     const allCentersPresent = vcenters.every((vc) => {
       return centers.has(vc);
     })
@@ -485,50 +507,9 @@ function drawEstate(estate_id, tiles) {
   const polygon = {
     vertices: vertices,
     centers: centers,
+    border: border,
   }
   return [polygon];
-
-  //estateData.map(console.log);
-  return;
-  console.log(queue)
-  //var first = estateData.splice(0, 1)[0]
-  // console.log("first", first)
-  var coordsApplied = [first.coord]
-  // console.log("coordsApplied", coordsApplied)
-  var drawing = first.points
-  while (queue.length > 0) {
-    let adjacentData = getAdjacentCoord(coordsApplied, queue)
-    let adjacent = adjacentData[0]
-    queue.splice(queue.indexOf(adjacent), 1)
-    let indices = []
-    // console.log("adjacent found", adjacent)
-    for (var i = adjacent.points.length - 1; i >= 0; i--) {
-      var currentAdjacent = adjacent.points[i]
-      for (var j = drawing.length - 1; j >= 0; j--) {
-        var currentDrawing = drawing[j]
-        if ((currentAdjacent.x === currentDrawing.x) && (currentAdjacent.y === currentDrawing.y)) {
-          // console.log("i", i, adjacent.points.length, "j", j, drawing.length)
-          indices.push(j)
-          // console.log("Removing from draw", currentAdjacent)
-          adjacent.points.splice(i, 1)
-          drawing.splice(j, 1)
-        }
-      }
-    }
-
-    if (indices.length === 0) {
-      // console.log("INDICES LENGHT 0")
-      indices = [getIndexFor(adjacentData, drawing)]
-    }
-
-    console.log("POINTS TO ADD", adjacent, "to", drawing)
-    drawing.splice(indices[indices.length - 1], 0, ...adjacent.points)
-    coordsApplied.unshift(adjacent.coord)
-    console.log("DRAWING PROGRESS", drawing)
-  }
-  drawing.push(drawing[0])
-  console.log("DRAWING FINISHED", drawing)
-  return drawing
 }
 
 const cache = {}
@@ -539,20 +520,29 @@ function centerToVertices(center /* {"x":0, "y":0} */) {
   let y = center.y + mapSize
   x = x * parcelSize
   y = y * parcelSize
-  const ret = [{"x": x,"y": y},{"x": x,"y": y+parcelSize},{"x": x+parcelSize,"y": y+parcelSize},{"x": x+parcelSize,"y": y}]
+  const ret = [{"x": x,"y": y},{"x": x+parcelSize,"y": y},{"x": x+parcelSize,"y": y+parcelSize},{"x": x,"y": y+parcelSize}]
+  
   ret.every((p)=>{
     if (!cache[p.x]) cache[p.x] = {}
     if (!cache[p.x][p.y]) cache[p.x][p.y] = []
     cache[p.x][p.y].push(center)
     return true;
   })
+
   // console.log(cache);
   // console.log(cache[x][y])
   // process.exit(1);
   return ret;
 }
+function centerToEdges(center) {
+  vxs = centerToVertices(center);
+  return [[vxs[0], vxs[1]], [vxs[1], vxs[2]], [vxs[2], vxs[3]], [vxs[3], vxs[0]]]
+}
 function vertexToCenters(vertex) {
-
+  let x = vertex.x / parcelSize - mapSize;
+  let y = vertex.y / parcelSize - mapSize;
+  const ret = [{x: x, y:y},{x: x-1, y:y},{x: x, y:y-1},{x: x-1, y:y-1}]
+  return ret
 }
 
 function generateEstatesJSON(estates) {
@@ -571,17 +561,6 @@ function generatePolygonJson(estate) {
     return [point.x, point.y]
   })
   return {"type":"Feature","geometry": {"type":"Polygon","coordinates":[result]}}
-}
-
-function getClosestPointIndex(point, drawing, isHorizontal) {
-  console.log("getClosestPoint", point, drawing, isHorizontal)
-  let sameAxisPoints = drawing.filter(el => isHorizontal ? (el.x == point.x) : (el.y == point.y))//.map(el => isHorizontal ? el.y : el.x)
-  let reduced = sameAxisPoints.reduce((previous, current) => {
-    return (current > previous && current < point) ? current : previous
-  })
-
-  console.log(reduced)
-  console.log(drawing.indexOf(reduced))
 }
 /////////////////////  ESTATES END  /////////////////////
 
@@ -629,11 +608,30 @@ function normalizeCenters(center_set) {
   });
   return padded;
 }
-function drawPolygon({vertices, centers, estate_id}) {
+function normalizeBorder(border_string) {
+  const border = Array.from(border_string).map(JSON.parse);
+  let minx = 123456789;
+  let miny = 123456789;
+  for (const [A, B] of border) {
+    if (A.x < minx) minx = A.x;
+    if (A.y < miny) miny = A.y;
+    if (B.x < minx) minx = B.x;
+    if (B.y < miny) miny = B.y;
+  }
+  const padded = border.map(([A,B])=>{
+    return [{x: A.x-minx, y: A.y-miny}, {x: B.x-minx, y: B.y-miny}];
+  });
+  
+  return padded.map(([A,B])=>{
+    return [{x: A.x/parcelSize, y: A.y/parcelSize}, {x: B.x/parcelSize, y: B.y/parcelSize}];
+  });
+}
+function drawPolygon({vertices, centers, border, estate_id}) {
   const normalized = normalizeVertices(vertices);
   console.log(normalized);
   const normCenters = normalizeCenters(centers);
   console.log(normCenters);
+  const normBorder = normalizeBorder(border);
   
   const width = 500;
   const height = 500;
@@ -642,15 +640,32 @@ function drawPolygon({vertices, centers, estate_id}) {
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, width, height);
-  ctx.fillStyle = '#ffaaaa';
+  // tiles
+  ctx.fillStyle = 'red';
   Array.from(normCenters).map((c)=>{
     ctx.fillRect(c.x*drawScale+100+drawScale/10,c.y*drawScale+100+drawScale/10,4*drawScale/5,4*drawScale/5);
   })
+  // vertices
   ctx.fillStyle = 'blue';
   normalized.map((v) => {
-    console.log(v)
-    ctx.fillRect(v.x*drawScale+100-1,v.y*drawScale+100-drawScale/10,drawScale/5,drawScale/5);
+    ctx.fillRect(v.x*drawScale+100-drawScale/10,v.y*drawScale+100-drawScale/10,drawScale/5,drawScale/5);
   });
+  // edges
+  ctx.fillStyle = 'green';
+  console.log('normBorder #', normBorder.length);
+  normBorder.map(([A, B]) => {
+    console.log([A, B])
+    const dx = B.x - A.x;
+    const dy = B.y - A.y;
+
+    ctx.beginPath();
+    ctx.moveTo(A.x*drawScale+100, A.y*drawScale+100);
+    ctx.lineTo(B.x*drawScale+100, B.y*drawScale+100);
+    ctx.closePath();
+    ctx.stroke();
+    // ctx.fillRect(A.x*drawScale+100-drawScale/10,A.y*drawScale+100-drawScale/10,dx*drawScale/5,dy*drawScale/5);
+  });
+  // save image
   const buffer = canvas.toBuffer('image/png');
   fs.writeFileSync('./image.png', buffer);
   console.log('estate id=',estate_id);
@@ -662,13 +677,19 @@ function mockEstate() {
 }
 
 // test findAdjacent
-// console.log(estateToPoints( {"x":-150, "y":-150}));
-// console.log(estateToPoints( {"x":-149, "y":-150}));
-// const p0s = estateToPoints( {"x":-150, "y":-150});
-// const vs = new Set();
-// addAll(vs, p0s);
-// const ret = findAdjacent(vs, [{center: {"x":-149, "y":-150}, points: estateToPoints( {"x":-149, "y":-150})}])
+// console.log(centerToVertices( {"x":0, "y":0}));
+// console.log(centerToVertices( {"x":1, "y":0}));
+const zz = {"x":0, "y":0};
+const p0s = centerToVertices(zz);
+// console.log(p0s);
+const vs = new Set();
+addAll(vs, p0s);
+const ret = findAdjacent(vs, [{center: {"x":0, "y":0}, points: centerToVertices( {"x":1, "y":0})}])
 // console.log(ret);
-// return
+
+// test vertexToCenters
+// console.log('vertexToCenters', p0s[0],'->', vertexToCenters(p0s[0]))
+
+// console.log(centerToEdges(zz))
 
 getEstates().catch(error => logMessage(error.stack))
