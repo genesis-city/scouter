@@ -426,9 +426,10 @@ function drawEstate(estate_id, tiles) {
   
   // calculate all vertices
   while (queue.length > 0) {
-    console.log('>>>> iteration', queue.length);
-    console.log('>>>> vertices', vertices);
-    console.log('>>>> centers', centers);
+    // console.log('>>>> iteration', queue.length);
+    // console.log('>>>> vertices', vertices);
+    // console.log('>>>> centers', centers);
+
     // get an adjacent center 
     const adjacent = findAdjacent(vertices, queue);
 
@@ -443,7 +444,31 @@ function drawEstate(estate_id, tiles) {
   }
 
   // remove internal vertices
-  // TODO
+  const removeMe = [];
+  Array.from(vertices).every((vs) => {
+    const v = JSON.parse(vs);
+    // console.log('v', v);
+    const neighbors = [
+      {x: v.x-parcelSize, y: v.y}, //left
+      {x: v.x+parcelSize, y: v.y}, // right
+      {x: v.x, y: v.y+parcelSize}, // up
+      {x: v.x, y: v.y-parcelSize}, // down
+    ];
+    // console.log('checking for', neighbors);
+    const allNeighborsPresent = neighbors.every((n)=>{
+      return vertices.has(JSON.stringify(n));
+    });
+    if (allNeighborsPresent) {
+      removeMe.push(v);
+    }
+    return true;
+  })
+  console.log('remove set', removeMe.length);
+  console.log('size pre remove', vertices.size);
+  assert(removeMe.every((toRemove) => {
+    return vertices.delete(JSON.stringify(toRemove));
+  }), 'tried to removed non-existing vertex from vertices');
+  console.log('size post remove', vertices.size);
 
   const polygon = {
     vertices: vertices,
