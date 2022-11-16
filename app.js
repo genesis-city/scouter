@@ -275,7 +275,7 @@ async function roundCoordsForUnity() {
 // const parcelSize = 40
 // const mapSize = 152
 const parcelSize = 40
-const mapSize = 150
+const mapSize = 152
 
 function generateGeoJson(coords) {
   // console.log(allRaw)
@@ -348,9 +348,9 @@ async function getEstates() {
     let allPolygons = []
     // const WWW  = 7;
     Object.entries(tilesForEstate)/*.slice(WWW,WWW+1)*/.every(([estate_id, tiles]) => {
-      if (estate_id != "4274") { //1817 hardcore
-        return true;
-      }
+      // if (estate_id != "4274") { //1817 hardcore
+      //   return true;
+      // }
       const estatePolygons = drawEstate(estate_id, tiles);
       estatePolygons.every((polygon) => {
         polygon.estate_id = estate_id;
@@ -364,7 +364,10 @@ async function getEstates() {
 
     // console.log("Drawing RESULT", estates)
     console.log("estates length:", allPolygons.length)
-    drawPolygon(allPolygons[0]);
+    
+    // draw to image
+    //drawPolygon(allPolygons[0]);
+    
     generateEstatesJSON(allPolygons)
     process.exit()
   } catch(err) {
@@ -550,7 +553,7 @@ function generateEstatesJSON(polygons) {
   })
   
   let estatesJson = JSON.stringify({"type":"FeatureCollection", "crs": {"type": "name", "properties": {"name": "ESTATES"}}, "features":polygonJSONs}, null, 1)
-  fs.writeFileSync('estates.json', estatesJson);
+  fs.writeFileSync('../genesis.city/estates.json', estatesJson);
   // estatesJsonFile.write(estatesJson)
   // estatesJsonFile.end()
   console.log("Estates json created")
@@ -558,13 +561,11 @@ function generateEstatesJSON(polygons) {
 
 function generatePolygonJson(polygon) {
   // console.log('generateJSON', polygon)
-  var result = [];
-  Array.from(polygon.border).map((edge_str) => {
+  var result = Array.from(polygon.border).map((edge_str) => {
     [A, B] = JSON.parse(edge_str);
-    result.push([A.x, A.y])
-    result.push([B.x, B.y]);
+    return [[A.x, A.y], [B.x, B.y]];
   })
-  return {"type":"Feature","geometry": {"type":"LineString","coordinates":[result]}}
+  return {"type":"Feature","geometry": {"type":"MultiLineString","coordinates":result}}
 }
 /////////////////////  ESTATES END  /////////////////////
 
