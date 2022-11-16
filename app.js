@@ -346,11 +346,11 @@ async function getEstates() {
     console.log(Object.entries(tilesForEstate).length, 'estates total containing', tilesInEstate.length, 'tiles');
     
     let allPolygons = []
-    const WWW = 4;
-    Object.entries(tilesForEstate).slice(WWW,WWW+1).every(([estate_id, tiles]) => {
-      // if (estate_id != "1817") {
-      //   return true;
-      // }
+    // const WWW  = 7;
+    Object.entries(tilesForEstate)/*.slice(WWW,WWW+1)*/.every(([estate_id, tiles]) => {
+      if (estate_id != "1817") {
+        return true;
+      }
       const estatePolygons = drawEstate(estate_id, tiles);
       estatePolygons.every((polygon) => {
         polygon.estate_id = estate_id;
