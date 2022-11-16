@@ -7,14 +7,9 @@ let mongoose = require('mongoose')
 let parcelSchema = new mongoose.Schema({ coords: String, id: String, dirty: Boolean })
 const Parcel = mongoose.model('Parcel', parcelSchema)
 const dotenv = require("dotenv");
-const { reduce } = require('async');
-const { join, normalize } = require('path');
-const { json } = require('express');
-const { isNumberObject } = require('util/types');
 dotenv.config()
 
 var geoJsonFile = fs.createWriteStream('geo.json')
-var estatesJsonFile = fs.createWriteStream('estates.json')
 var coordsStream = fs.createWriteStream('coords.txt')
 var coordsRawStream = fs.createWriteStream('raw_coords.txt')
 var logger = fs.createWriteStream('logs.txt', {flags: 'a' /*append*/})
@@ -321,6 +316,7 @@ async function getEstates() {
       const fdata = JSON.parse(fs.readFileSync(fname))
       response = {data: fdata};
     } else {
+      console.log('Getting all tiles from https://api.decentraland.org/v1/tiles...')
       response = await axios.get(`https://api.decentraland.org/v1/tiles`)
       // fs.writeFileSync(fname, JSON.stringify(response.data));
     }
@@ -351,6 +347,8 @@ async function getEstates() {
       const estatePolygons = drawEstate(estate_id, tiles);
       estatePolygons.every((polygon) => {
         polygon.estate_id = estate_id;
+        polygon.type = tiles[0].type;
+        polygon.name = tiles[0].name;
         allPolygons.push(polygon);
       });
       return true;
@@ -383,23 +381,6 @@ function addAll(set, iter) {
 function remove(list, elem) {
   list.splice(list.indexOf(elem), 1);
 }
-
-function findAdjacent(vertices, queue) {
-  const vsize = vertices.size;
-  const qsize = queue.length;
-  for(const pending of queue) {
-    const simulate = new Set(vertices);
-    addAll(simulate, pending.points);
-    const delta = simulate.size - vertices.size;
-    if (delta <= 2) {
-      assert(vertices.size === vsize, 'vertices changed size and it shouldnt');
-      assert(queue.length === qsize, 'queue changed length and it shouldnt');
-      return pending;
-    }
-  }
-  assert(false, 'no adjacent found!!')
-}
-
 
 function drawEstate(estate_id, tiles) {
   console.log("Drawing estate:", estate_id, tiles.length);
@@ -520,7 +501,8 @@ function generatePolygonJson(polygon) {
     [A, B] = JSON.parse(edge_str);
     return [[A.x, A.y], [B.x, B.y]];
   })
-  return {"type":"Feature","geometry": {"type":"MultiLineString","coordinates":result}}
+  const feature = {"type":"Feature", /*'properties': {'type': polygon.type },*/"geometry": {"type":"MultiLineString","coordinates":result}};
+  return feature;
 }
 /////////////////////  ESTATES END  /////////////////////
 
