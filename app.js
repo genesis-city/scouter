@@ -8,7 +8,7 @@ let parcelSchema = new mongoose.Schema({ coords: String, id: String, dirty: Bool
 const Parcel = mongoose.model('Parcel', parcelSchema)
 const dotenv = require("dotenv");
 const { reduce } = require('async');
-const { join } = require('path');
+const { join, normalize } = require('path');
 const { json } = require('express');
 const { isNumberObject } = require('util/types');
 dotenv.config()
@@ -346,17 +346,23 @@ async function getEstates() {
     })
     console.log(Object.entries(tilesForEstate).length, 'estates total containing', tilesInEstate.length, 'tiles');
     
-    let estates = []
-    Object.entries(tilesForEstate).every(([estate_id, tiles]) => {
-      estates.push(drawEstate(estate_id, tiles))
-      return estates.length == 0; // stop at first
+    let allPolygons = []
+    const w = 4;
+    Object.entries(tilesForEstate).slice(w,w+1).every(([estate_id, tiles]) => {
+      const estatePolygons = drawEstate(estate_id, tiles);
+      estatePolygons.every((polygon) => {
+        polygon.estate_id = estate_id;
+        allPolygons.push(polygon);
+      });
+      return true;
     })
 
     // let mocked = mockEstate()
     // estates.push(drawEstate(mocked.nft.data.estate.parcels))
 
     // console.log("Drawing RESULT", estates)
-    console.log("estates length:", estates.length)
+    console.log("estates length:", allPolygons.length)
+    drawPolygon(allPolygons[0]);
     //generateEstatesJSON(estates)
     process.exit()
   } catch(err) {
@@ -364,6 +370,10 @@ async function getEstates() {
     throw err
   }
 }
+const assert = function(condition, message) {
+  if (!condition)
+      throw Error('Assert failed: ' + (message || ''));
+};
 
 function addAll(set, iter) {
   iter.map(JSON.stringify).forEach(set.add.bind(set));
@@ -396,10 +406,6 @@ function findAdjacent(vertices, queue) {
   assert(false, 'no adjacent found!!')
 }
 
-const assert = function(condition, message) {
-  if (!condition)
-      throw Error('Assert failed: ' + (message || ''));
-};
 
 function drawEstate(estate_id, tiles) {
   console.log("Drawing estate:", estate_id, tiles.length);
@@ -437,8 +443,13 @@ function drawEstate(estate_id, tiles) {
   }
 
   // remove internal vertices
+  // TODO
 
-
+  const polygon = {
+    vertices: vertices,
+    centers: centers,
+  }
+  return [polygon];
 
   //estateData.map(console.log);
   return;
@@ -483,80 +494,11 @@ function drawEstate(estate_id, tiles) {
   return drawing
 }
 
-function getAdjacentCoord(coordsApplied, estate) {  
-  for(const current of coordsApplied) {
-    for(const el of estate) {
-      if ((el.coord.x === current.x - 1) && (el.coord.y === current.y)) {
-        var result = el
-        result.points = rotate(el.points, 3)
-        console.log("ROTATING POINTS BY 3", current)
-        return [result, current]
-      }
-    }
-  }
-
-  for(const current of coordsApplied) {
-    for(const el of estate) {
-      if ((el.coord.x === current.x) && (el.coord.y === current.y + 1)) {
-        console.log("NO ROTATING ADJACENT IS UP")
-        return [el, current]
-      }
-    }
-  }
-
-  for(const current of coordsApplied) {
-    for(const el of estate) {
-      if ((el.coord.x === current.x + 1) && (el.coord.y === current.y)) {
-        var result = el
-        result.points = rotate(el.points, 1)
-        console.log("ROTATING POINTS BY 1", current)
-        return [result, current]
-      }
-    }
-  }
-
-  for(const current of coordsApplied) {
-    for(const el of estate) {
-      if ((el.coord.x === current.x) && (el.coord.y === current.y - 1)) {
-        var result = el
-        result.points = rotate(el.points, 2)
-        console.log("ROTATING POINTS BY 2", current)
-        return [result, current]
-      }
-    }
-  }
-    
-  console.log("NO ADJACENT FOUND IN", estate, "applied", coords)
-  process.exit()
-}
-
-function getIndexFor(adjacent, drawing) {
-  console.log("adjacent", adjacent)
-  let next = adjacent[0]
-  let startingEstate = adjacent[1]
-  console.log("next", next, "startingPoint", startingEstate)
-  let startingPoints = estateToPoints(startingEstate)
-  console.log("startingPoints", startingPoints)
-  let linePoints = []
-  for(const startingPoint of startingPoints) {
-    for(const nextPoint of next.points) {
-      if (startingPoint.x === nextPoint.x && startingPoint.y === nextPoint.y) {
-        linePoints.push(nextPoint)
-      }
-    }
-  }
-  var isHorizontal = linePoints[0].x === linePoints[1].x
-  if (isHorizontal) {
-    linePoints.sort(function(a, b){return a.x-b.x});
-  } else {
-    linePoints.sort(function(a, b){return a.y-b.y});
-  }
-  return getClosestPointIndex(linePoints[0], drawing, isHorizontal) + 1
-}
-
 function estateToPoints(coords /* {"x":0, "y":0} */) {
-  let x = coords.x + mapSize
-  let y = coords.y + mapSize
+  // TODO: revert this!
+  // TODO: changed for ease of manual checks, revert to totti's original
+  let x = coords.x// + mapSize
+  let y = coords.y// + mapSize
   x = x * parcelSize
   y = y * parcelSize
   return [{"x": x,"y": y},{"x": x,"y": y+parcelSize},{"x": x+parcelSize,"y": y+parcelSize},{"x": x+parcelSize,"y": y}]
@@ -608,6 +550,62 @@ function rotate(arr, count) {
 // function generateEstatesJSON(parcels) {
 
 // }
+
+const { createCanvas } = require('canvas')
+function normalizeVertices(string_vertices) {
+
+  const vertices = Array.from(string_vertices).map(JSON.parse);
+  let minx = 123456789;
+  let miny = 123456789;
+  for (const vs  of vertices) {
+    if (vs.x < minx) minx = vs.x;
+    if (vs.y < miny) miny = vs.y;
+  }
+  const padded = vertices.map((v)=>{
+    return {x: v.x-minx, y: v.y-miny};
+  });
+
+  return padded.map((v)=>{
+    return {x: v.x/1, y: v.y/1};
+  });
+}
+function normalizeCenters(center_set) {
+  const centers = Array.from(center_set);
+  let minx = 123456789;
+  let miny = 123456789;
+  for (const vs  of centers) {
+    if (vs.x < minx) minx = vs.x;
+    if (vs.y < miny) miny = vs.y;
+  }
+  const padded = centers.map((v)=>{
+    return {x: v.x-minx, y: v.y-miny};
+  });
+  return padded;
+}
+function drawPolygon({vertices, centers, estate_id}) {
+  const normalized = normalizeVertices(vertices);
+  console.log(normalized);
+  const normCenters = normalizeCenters(centers);
+  console.log(normCenters);
+  
+  const width = 500;
+  const height = 500;
+  const canvas = createCanvas(width, height);
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = '#ffaaaa';
+  Array.from(normCenters).map((c)=>{
+    ctx.fillRect(c.x*10+100+1,c.y*10+100+1,8,8);
+  })
+  ctx.fillStyle = 'blue';
+  normalized.map((v) => {
+    ctx.fillRect(v.x+100-1,v.y+100-1,2,2);
+  });
+  const buffer = canvas.toBuffer('image/png');
+  fs.writeFileSync('./image.png', buffer);
+  console.log('estate id=',estate_id);
+}
 
 
 function mockEstate() {
