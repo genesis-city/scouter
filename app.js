@@ -27,37 +27,37 @@ const choices = [
   // 'Delete database',
   'Estate tests'];
 
-// inquirer
-//   .prompt([
-//     {
-//       type: 'list',
-//       name: 'mode',
-//       message: 'What do you want to do?',
-//       choices: choices,
-//     },
-//   ])
-//   .then(answers => {
-//     switch (answers.mode) {
-//       case choices[0]:
-//         run().catch(error => logMessage(error.stack))
-//         break;
-//       case choices[1]:
-//         markAllAsClean().catch(error => logMessage(error.stack))
-//         break;
-//       case choices[2]:
-//         roundCoordsForUnity().catch(error => logMessage(error.stack))
-//         break;
-//       // case choices[3]:
-//       //   deleteDatabase().catch(error => logMessage(error.stack))
-//       //   break;
-//       case choices[3]:
-  //       getEstates().catch(error => logMessage(error.stack))
-  //       break;
-  //     default:
-  //       logMessage('Option not found');
-  //       process.exit();
-  //   }
-  // });
+inquirer
+  .prompt([
+    {
+      type: 'list',
+      name: 'mode',
+      message: 'What do you want to do?',
+      choices: choices,
+    },
+  ])
+  .then(answers => {
+    switch (answers.mode) {
+      case choices[0]:
+        run().catch(error => logMessage(error.stack))
+        break;
+      case choices[1]:
+        markAllAsClean().catch(error => logMessage(error.stack))
+        break;
+      case choices[2]:
+        roundCoordsForUnity().catch(error => logMessage(error.stack))
+        break;
+      // case choices[3]:
+      //   deleteDatabase().catch(error => logMessage(error.stack))
+      //   break;
+      case choices[3]:
+        getEstates().catch(error => logMessage(error.stack))
+        break;
+      default:
+        logMessage('Option not found');
+        process.exit();
+    }
+  });
 
 async function run() {
   logMessage("Full run started")
@@ -271,9 +271,6 @@ async function roundCoordsForUnity() {
   process.exit()
 }
 
-// TODO: revert!
-// const parcelSize = 40
-// const mapSize = 152
 const parcelSize = 40
 const mapSize = 152
 
@@ -313,19 +310,19 @@ function getCurrentDateAndTime() {
 //////////////////////////////////////////////////////////
 async function getEstates() {
   try {
-    const fname = 'estates-raw.txt';
     let response = null;
     let exists = false
-    try {
-      exists = fs.existsSync(fname)
-    } catch(err) {
-    }
+    // const fname = 'estates-raw.txt';
+    // try {
+    //   exists = fs.existsSync(fname)
+    // } catch(err) {
+    // }
     if (exists) {
       const fdata = JSON.parse(fs.readFileSync(fname))
       response = {data: fdata};
     } else {
       response = await axios.get(`https://api.decentraland.org/v1/tiles`)
-      fs.writeFileSync(fname, JSON.stringify(response.data));
+      // fs.writeFileSync(fname, JSON.stringify(response.data));
     }
     const tiles = response.data.data;
     // all tiles
@@ -346,8 +343,8 @@ async function getEstates() {
     console.log(Object.entries(tilesForEstate).length, 'estates total containing', tilesInEstate.length, 'tiles');
     
     let allPolygons = []
-    // const WWW  = 7;
-    Object.entries(tilesForEstate)/*.slice(WWW,WWW+1)*/.every(([estate_id, tiles]) => {
+    // const specific  = 7;
+    Object.entries(tilesForEstate)/*.slice(specific,specific+1)*/.every(([estate_id, tiles]) => {
       // if (estate_id != "4274") { //1817 hardcore
       //   return true;
       // }
@@ -362,11 +359,10 @@ async function getEstates() {
     // let mocked = mockEstate()
     // estates.push(drawEstate(mocked.nft.data.estate.parcels))
 
-    // console.log("Drawing RESULT", estates)
     console.log("estates length:", allPolygons.length)
     
-    // draw to image
-    //drawPolygon(allPolygons[0]);
+    // draw to image using canvas
+    // drawPolygon(allPolygons[0]);
     
     generateEstatesJSON(allPolygons)
     process.exit()
@@ -389,19 +385,12 @@ function remove(list, elem) {
 }
 
 function findAdjacent(vertices, queue) {
-  // console.log('finding new adjacent point');
   const vsize = vertices.size;
   const qsize = queue.length;
   for(const pending of queue) {
-    // console.log('considering', pending.center);
     const simulate = new Set(vertices);
     addAll(simulate, pending.points);
-    // console.log('simulate', simulate);
-    // console.log('pending.points', pending.points);
     const delta = simulate.size - vertices.size;
-    // console.log('vertices', vertices.size, 'simulate', simulate.size, 'delta', delta);
-    // if adding points to the vertex set adds less than 2 vertices then it must be a neighbor.
-    // (otherwise it will add 3 or 4 new points to the set)
     if (delta <= 2) {
       assert(vertices.size === vsize, 'vertices changed size and it shouldnt');
       assert(queue.length === qsize, 'queue changed length and it shouldnt');
@@ -420,9 +409,7 @@ function drawEstate(estate_id, tiles) {
   })
 
   const first = queue[0];
-  // remove first from estateData
-  queue = queue.filter(item => item !== first);
-  // console.log('first', first);
+  remove(queue, first);
 
   const centers = new Set();
   centers.add(first.center);
@@ -432,10 +419,6 @@ function drawEstate(estate_id, tiles) {
   addAll(border, first.edges);
   // calculate all vertices
   while (queue.length > 0) {
-    // console.log('>>>> iteration', queue.length);
-    // console.log('>>>> vertices', vertices);
-    // console.log('>>>> centers', centers);
-
     // get an adjacent center 
     const adjacent = queue[0];
 
@@ -446,14 +429,11 @@ function drawEstate(estate_id, tiles) {
     centers.add(adjacent.center);
 
     // add new edges to the set of border edges
-    // console.log('edges!')
     adjacent.edges.every(([A, B]) => {
-      // console.log('edge', A, B);
       // remove existing edge if present
       const AB = JSON.stringify([A,B]);
       const BA = JSON.stringify([B,A]);
       if (border.has(AB) || border.has(BA)) {
-        // console.log('removing edge', AB);
         border.delete(AB);
         border.delete(BA);
       } 
@@ -463,7 +443,6 @@ function drawEstate(estate_id, tiles) {
       }
       return true;
     });
-    // console.log('border', border);
 
     // remove it from the queue
     remove(queue, adjacent);
@@ -473,7 +452,6 @@ function drawEstate(estate_id, tiles) {
   const removeMe = [];
   Array.from(vertices).every((vs) => {
     const v = JSON.parse(vs);
-    // console.log('v', v);
 
     // neighbor vertices
     const neighbors = [
@@ -482,14 +460,12 @@ function drawEstate(estate_id, tiles) {
       {x: v.x, y: v.y+parcelSize}, // up
       {x: v.x, y: v.y-parcelSize}, // down
     ];
-    // console.log('checking for', neighbors);
     const allNeighborsPresent = neighbors.every((n)=>{
       return vertices.has(JSON.stringify(n));
     });
 
     // neighbor centers
     const vcenters = vertexToCenters(v);
-    // console.log(centers);
     const allCentersPresent = vcenters.every((vc) => {
       return centers.has(vc);
     })
@@ -499,12 +475,9 @@ function drawEstate(estate_id, tiles) {
     }
     return true;
   })
-  // console.log('remove set', removeMe.length);
-  // console.log('size pre remove', vertices.size);
   assert(removeMe.every((toRemove) => {
     return vertices.delete(JSON.stringify(toRemove));
   }), 'tried to removed non-existing vertex from vertices');
-  // console.log('size post remove', vertices.size);
 
   const polygon = {
     vertices: vertices,
@@ -514,27 +487,12 @@ function drawEstate(estate_id, tiles) {
   return [polygon];
 }
 
-const cache = {}
 function centerToVertices(center /* {"x":0, "y":0} */) {
-  // TODO: revert this!
-  // TODO: changed for ease of manual checks, revert to totti's original
   let x = center.x + mapSize
   let y = center.y + mapSize
   x = x * parcelSize
   y = y * parcelSize
-  const ret = [{"x": x,"y": y},{"x": x+parcelSize,"y": y},{"x": x+parcelSize,"y": y+parcelSize},{"x": x,"y": y+parcelSize}]
-  
-  ret.every((p)=>{
-    if (!cache[p.x]) cache[p.x] = {}
-    if (!cache[p.x][p.y]) cache[p.x][p.y] = []
-    cache[p.x][p.y].push(center)
-    return true;
-  })
-
-  // console.log(cache);
-  // console.log(cache[x][y])
-  // process.exit(1);
-  return ret;
+  return [{"x": x,"y": y},{"x": x+parcelSize,"y": y},{"x": x+parcelSize,"y": y+parcelSize},{"x": x,"y": y+parcelSize}]
 }
 function centerToEdges(center) {
   vxs = centerToVertices(center);
@@ -552,15 +510,12 @@ function generateEstatesJSON(polygons) {
     return generatePolygonJson(polygon);
   })
   
-  let estatesJson = JSON.stringify({"type":"FeatureCollection", "crs": {"type": "name", "properties": {"name": "ESTATES"}}, "features":polygonJSONs}, null, 1)
-  fs.writeFileSync('../genesis.city/estates.json', estatesJson);
-  // estatesJsonFile.write(estatesJson)
-  // estatesJsonFile.end()
-  console.log("Estates json created")
+  let estatesJson = JSON.stringify({"type":"FeatureCollection", "crs": {"type": "name", "properties": {"name": "ESTATES"}}, "features":polygonJSONs}, null, 0)
+  fs.writeFileSync('./estates.json', estatesJson);
+  console.log("Estates json created");
 }
 
 function generatePolygonJson(polygon) {
-  // console.log('generateJSON', polygon)
   var result = Array.from(polygon.border).map((edge_str) => {
     [A, B] = JSON.parse(edge_str);
     return [[A.x, A.y], [B.x, B.y]];
@@ -655,7 +610,6 @@ function drawPolygon({vertices, centers, border, estate_id}) {
   });
   // edges
   ctx.fillStyle = 'green';
-  // console.log('normBorder #', normBorder.length);
   normBorder.map(([A, B]) => {
     const dx = B.x - A.x;
     const dy = B.y - A.y;
@@ -665,7 +619,6 @@ function drawPolygon({vertices, centers, border, estate_id}) {
     ctx.lineTo(B.x*drawScale+100, B.y*drawScale+100);
     ctx.closePath();
     ctx.stroke();
-    // ctx.fillRect(A.x*drawScale+100-drawScale/10,A.y*drawScale+100-drawScale/10,dx*drawScale/5,dy*drawScale/5);
   });
   // save image
   const buffer = canvas.toBuffer('image/png');
@@ -677,21 +630,3 @@ function drawPolygon({vertices, centers, border, estate_id}) {
 function mockEstate() {
   return JSON.parse('{"nft":{"id":"0x959e104e1a4db6317fa58f8295f586e1a978c297-3847","tokenId":"3847","contractAddress":"0x959e104e1a4db6317fa58f8295f586e1a978c297","activeOrderId":"0x7068c5480f4f73895395e216ea32e45d81ae758c4e13f0db43fce0df3d2e3070","openRentalId":null,"owner":"0x3a572361910939dfc230bc010dadc9de7bd3af4b","name":"South  left gate","image":"https://api.decentraland.org/v1/estates/3847/map.png","url":"/contracts/0x959e104e1a4db6317fa58f8295f586e1a978c297/tokens/3847","data":{"estate":{"description":"South  left gate!","size":13,"parcels":[{"x":-2,"y":-150},{"x":-2,"y":-144},{"x":-2,"y":-143},{"x":-2,"y":-142},{"x":-1,"y":-150},{"x":-1,"y":-149},{"x":-1,"y":-148},{"x":-1,"y":-147},{"x":-1,"y":-146},{"x":-1,"y":-145},{"x":-1,"y":-144},{"x":-1,"y":-143},{"x":-1,"y":-142}]}},"issuedId":null,"itemId":null,"category":"estate","network":"ETHEREUM","chainId":1,"createdAt":1601652467000,"updatedAt":1663477751000,"soldAt":0},"order":{"id":"0x7068c5480f4f73895395e216ea32e45d81ae758c4e13f0db43fce0df3d2e3070","marketplaceAddress":"0x8e5660b4ab70168b5a6feea0e0315cb49c8cd539","contractAddress":"0x959e104e1a4db6317fa58f8295f586e1a978c297","tokenId":"3847","owner":"0x3a572361910939dfc230bc010dadc9de7bd3af4b","buyer":null,"price":"1755001000000000000000000","status":"open","network":"ETHEREUM","chainId":1,"expiresAt":1671667200000,"createdAt":1643357946000,"updatedAt":1643357946000},"rental":null}')
 }
-
-// test findAdjacent
-// console.log(centerToVertices( {"x":0, "y":0}));
-// console.log(centerToVertices( {"x":1, "y":0}));
-const zz = {"x":0, "y":0};
-const p0s = centerToVertices(zz);
-// console.log(p0s);
-const vs = new Set();
-addAll(vs, p0s);
-const ret = findAdjacent(vs, [{center: {"x":0, "y":0}, points: centerToVertices( {"x":1, "y":0})}])
-// console.log(ret);
-
-// test vertexToCenters
-// console.log('vertexToCenters', p0s[0],'->', vertexToCenters(p0s[0]))
-
-// console.log(centerToEdges(zz))
-
-getEstates().catch(error => logMessage(error.stack))
