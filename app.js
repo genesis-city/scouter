@@ -1,20 +1,15 @@
 const axios = require('axios');
 const inquirer = require('inquirer');
-const { Console, dir } = require('console');
+const { Console, dir} = require('console');
 const fs = require('fs');
 const { Int32, ConnectionCheckOutStartedEvent } = require('mongodb');
 let mongoose = require('mongoose')
 let parcelSchema = new mongoose.Schema({ coords: String, id: String, dirty: Boolean })
 const Parcel = mongoose.model('Parcel', parcelSchema)
 const dotenv = require("dotenv");
-const { reduce } = require('async');
-const { join } = require('path');
-const { json } = require('express');
-const { isNumberObject } = require('util/types');
 dotenv.config()
 
 var geoJsonFile = fs.createWriteStream('geo.json')
-var estatesJsonFile = fs.createWriteStream('estates.json')
 var coordsStream = fs.createWriteStream('coords.txt')
 var coordsRawStream = fs.createWriteStream('raw_coords.txt')
 var logger = fs.createWriteStream('logs.txt', {flags: 'a' /*append*/})
@@ -310,177 +305,204 @@ function getCurrentDateAndTime() {
 //////////////////////////////////////////////////////////
 async function getEstates() {
   try {
-    const response = await axios.get(`https://nft-api.decentraland.org/v1/nfts?first=1000&skip=0&sortBy=newest&category=estate`)
-    let estates = []
-    response.data.data.forEach(estate => {
-      estates.push(drawEstate(estate.nft.data.estate.parcels))
+    let response = null;
+    let exists = false
+    // const fname = 'estates-raw.txt';
+    // try {
+    //   exists = fs.existsSync(fname)
+    // } catch(err) {
+    // }
+    if (exists) {
+      const fdata = JSON.parse(fs.readFileSync(fname))
+      response = {data: fdata};
+    } else {
+      console.log('Getting all tiles from https://api.decentraland.org/v1/tiles...')
+      response = await axios.get(`https://api.decentraland.org/v1/tiles`)
+      // fs.writeFileSync(fname, JSON.stringify(response.data));
+    }
+    const tiles = response.data.data;
+    // all tiles
+    console.log(Object.entries(tiles).length, 'total tiles');
+    // tiles belonging to an estate
+    tilesInEstate = Object.entries(tiles).filter(([coord, info]) => 'estate_id' in info);
+    console.log(tilesInEstate.length, 'tiles within estate')
+
+    // build tiles for each estate id
+    tilesForEstate = {}
+    tilesInEstate.every(([_, info]) => {
+      if (!tilesForEstate[info.estate_id]) {
+        tilesForEstate[info.estate_id] = []
+      }
+      tilesForEstate[info.estate_id].push(info)
+      return true;
+    })
+    console.log(Object.entries(tilesForEstate).length, 'estates total containing', tilesInEstate.length, 'tiles');
+    
+    let allPolygons = []
+    // const specific  = 7;
+    Object.entries(tilesForEstate)/*.slice(specific,specific+1)*/.every(([estate_id, tiles]) => {
+      // if (estate_id != "4274") { //1817 hardcore
+      //   return true;
+      // }
+      const estatePolygons = drawEstate(estate_id, tiles);
+      estatePolygons.every((polygon) => {
+        polygon.estate_id = estate_id;
+        polygon.type = tiles[0].type;
+        polygon.name = tiles[0].name;
+        allPolygons.push(polygon);
+      });
+      return true;
     })
 
     // let mocked = mockEstate()
     // estates.push(drawEstate(mocked.nft.data.estate.parcels))
 
-    // console.log("Drawing RESULT", estates)
-    console.log("Parcels length:", estates.length)
-    generateEstatesJSON(estates)
+    console.log("estates length:", allPolygons.length)
+    
+    // draw to image using canvas
+    // drawPolygon(allPolygons[0]);
+    
+    generateEstatesJSON(allPolygons)
     process.exit()
   } catch(err) {
     logMessage(err)
     throw err
   }
 }
+const assert = function(condition, message) {
+  if (!condition)
+      throw Error('Assert failed: ' + (message || ''));
+};
 
-function drawEstate(estate) {
-  console.log("Drawing estate:", estate)
-  let estateData = estate.map(el => {
-    return {coord: el, points: estateToPoints(el)}
+function addAll(set, iter) {
+  iter.map(JSON.stringify).forEach(set.add.bind(set));
+}
+
+function remove(list, elem) {
+  list.splice(list.indexOf(elem), 1);
+}
+
+function drawEstate(estate_id, tiles) {
+  console.log("Drawing estate:", estate_id, tiles.length);
+  let queue = tiles.map(tile => {
+    const center = {x: tile.x, y: tile.y}
+    return {center: center, points: centerToVertices(center), edges: centerToEdges(center)}
   })
 
-  var first = estateData.splice(0, 1)[0]
-  console.log("first", first)
-  var coordsApplied = [first.coord]
-  console.log("coordsApplied", coordsApplied)
-  var drawing = first.points
-  while (estateData.length > 0) {
-    let adjacentData = getAdjacentCoord(coordsApplied, estateData)
-    let adjacent = adjacentData[0]
-    estateData.splice(estateData.indexOf(adjacent), 1)
-    let indices = []
-    console.log("adjacent found", adjacent)
-    for (var i = adjacent.points.length - 1; i >= 0; i--) {
-      var currentAdjacent = adjacent.points[i]
-      for (var j = drawing.length - 1; j >= 0; j--) {
-        var currentDrawing = drawing[j]
-        if ((currentAdjacent.x === currentDrawing.x) && (currentAdjacent.y === currentDrawing.y)) {
-          console.log("i", i, adjacent.points.length, "j", j, drawing.length)
-          indices.push(j)
-          console.log("Removing from draw", currentAdjacent)
-          adjacent.points.splice(i, 1)
-          drawing.splice(j, 1)
-        }
+  const first = queue[0];
+  remove(queue, first);
+
+  const centers = new Set();
+  centers.add(first.center);
+  const vertices = new Set();
+  addAll(vertices, first.points);
+  const border = new Set();
+  addAll(border, first.edges);
+  // calculate all vertices
+  while (queue.length > 0) {
+    // get an adjacent center 
+    const adjacent = queue[0];
+
+    // add it to the set of vertices
+    addAll(vertices, adjacent.points);
+
+    // add it to the set of centers
+    centers.add(adjacent.center);
+
+    // add new edges to the set of border edges
+    adjacent.edges.every(([A, B]) => {
+      // remove existing edge if present
+      const AB = JSON.stringify([A,B]);
+      const BA = JSON.stringify([B,A]);
+      if (border.has(AB) || border.has(BA)) {
+        border.delete(AB);
+        border.delete(BA);
+      } 
+      // otherwise, add it!
+      else {
+        border.add(AB);
       }
-    }
+      return true;
+    });
 
-    if (indices.length === 0) {
-      console.log("INDICES LENGHT 0")
-      indices = [getIndexFor(adjacentData, drawing)]
-    }
-
-    console.log("POINTS TO ADD", adjacent, "to", drawing)
-    drawing.splice(indices[indices.length - 1], 0, ...adjacent.points)
-    coordsApplied.unshift(adjacent.coord)
-    console.log("DRAWING PROGRESS", drawing)
+    // remove it from the queue
+    remove(queue, adjacent);
   }
-  drawing.push(drawing[0])
-  console.log("DRAWING FINISHED", drawing)
-  return drawing
+
+  // remove internal vertices
+  const removeMe = [];
+  Array.from(vertices).every((vs) => {
+    const v = JSON.parse(vs);
+
+    // neighbor vertices
+    const neighbors = [
+      {x: v.x-parcelSize, y: v.y}, //left
+      {x: v.x+parcelSize, y: v.y}, // right
+      {x: v.x, y: v.y+parcelSize}, // up
+      {x: v.x, y: v.y-parcelSize}, // down
+    ];
+    const allNeighborsPresent = neighbors.every((n)=>{
+      return vertices.has(JSON.stringify(n));
+    });
+
+    // neighbor centers
+    const vcenters = vertexToCenters(v);
+    const allCentersPresent = vcenters.every((vc) => {
+      return centers.has(vc);
+    })
+
+    if (allNeighborsPresent && allCentersPresent) {
+      removeMe.push(v);
+    }
+    return true;
+  })
+  assert(removeMe.every((toRemove) => {
+    return vertices.delete(JSON.stringify(toRemove));
+  }), 'tried to removed non-existing vertex from vertices');
+
+  const polygon = {
+    vertices: vertices,
+    centers: centers,
+    border: border,
+  }
+  return [polygon];
 }
 
-function getAdjacentCoord(coordsApplied, estate) {  
-  for(const current of coordsApplied) {
-    for(const el of estate) {
-      if ((el.coord.x === current.x - 1) && (el.coord.y === current.y)) {
-        var result = el
-        result.points = rotate(el.points, 3)
-        console.log("ROTATING POINTS BY 3", current)
-        return [result, current]
-      }
-    }
-  }
-
-  for(const current of coordsApplied) {
-    for(const el of estate) {
-      if ((el.coord.x === current.x) && (el.coord.y === current.y + 1)) {
-        console.log("NO ROTATING ADJACENT IS UP")
-        return [el, current]
-      }
-    }
-  }
-
-  for(const current of coordsApplied) {
-    for(const el of estate) {
-      if ((el.coord.x === current.x + 1) && (el.coord.y === current.y)) {
-        var result = el
-        result.points = rotate(el.points, 1)
-        console.log("ROTATING POINTS BY 1", current)
-        return [result, current]
-      }
-    }
-  }
-
-  for(const current of coordsApplied) {
-    for(const el of estate) {
-      if ((el.coord.x === current.x) && (el.coord.y === current.y - 1)) {
-        var result = el
-        result.points = rotate(el.points, 2)
-        console.log("ROTATING POINTS BY 2", current)
-        return [result, current]
-      }
-    }
-  }
-    
-  console.log("NO ADJACENT FOUND IN", estate, "applied", coords)
-  process.exit()
-}
-
-function getIndexFor(adjacent, drawing) {
-  console.log("adjacent", adjacent)
-  let next = adjacent[0]
-  let startingEstate = adjacent[1]
-  console.log("next", next, "startingPoint", startingEstate)
-  let startingPoints = estateToPoints(startingEstate)
-  console.log("startingPoints", startingPoints)
-  let linePoints = []
-  for(const startingPoint of startingPoints) {
-    for(const nextPoint of next.points) {
-      if (startingPoint.x === nextPoint.x && startingPoint.y === nextPoint.y) {
-        linePoints.push(nextPoint)
-      }
-    }
-  }
-  var isHorizontal = linePoints[0].x === linePoints[1].x
-  if (isHorizontal) {
-    linePoints.sort(function(a, b){return a.x-b.x});
-  } else {
-    linePoints.sort(function(a, b){return a.y-b.y});
-  }
-  return getClosestPointIndex(linePoints[0], drawing, isHorizontal) + 1
-}
-
-function estateToPoints(coords /* {"x":0, "y":0} */) {
-  let x = coords.x + mapSize
-  let y = coords.y + mapSize
+function centerToVertices(center /* {"x":0, "y":0} */) {
+  let x = center.x + mapSize
+  let y = center.y + mapSize
   x = x * parcelSize
   y = y * parcelSize
-  return [{"x": x,"y": y},{"x": x,"y": y+parcelSize},{"x": x+parcelSize,"y": y+parcelSize},{"x": x+parcelSize,"y": y}]
+  return [{"x": x,"y": y},{"x": x+parcelSize,"y": y},{"x": x+parcelSize,"y": y+parcelSize},{"x": x,"y": y+parcelSize}]
+}
+function centerToEdges(center) {
+  vxs = centerToVertices(center);
+  return [[vxs[0], vxs[1]], [vxs[1], vxs[2]], [vxs[2], vxs[3]], [vxs[3], vxs[0]]]
+}
+function vertexToCenters(vertex) {
+  let x = vertex.x / parcelSize - mapSize;
+  let y = vertex.y / parcelSize - mapSize;
+  const ret = [{x: x, y:y},{x: x-1, y:y},{x: x, y:y-1},{x: x-1, y:y-1}]
+  return ret
 }
 
-function generateEstatesJSON(estates) {
-  let polygons = estates.map(estate => {
-    return generatePolygonJson(estate)
+function generateEstatesJSON(polygons) {
+  let polygonJSONs = polygons.map(polygon => {
+    return generatePolygonJson(polygon);
   })
   
-  let estatesJson = JSON.stringify({"type":"FeatureCollection", "crs": {"type": "name", "properties": {"name": "ESTATES"}}, "features":polygons})
-  estatesJsonFile.write(estatesJson)
-  estatesJsonFile.end()
-  console.log("Estates json created")
+  let estatesJson = JSON.stringify({"type":"FeatureCollection", "crs": {"type": "name", "properties": {"name": "ESTATES"}}, "features":polygonJSONs}, null, 0)
+  fs.writeFileSync('./estates.json', estatesJson);
+  console.log("Estates json created");
 }
 
-function generatePolygonJson(estate) {
-  var result = estate.map(point => {
-    return [point.x, point.y]
+function generatePolygonJson(polygon) {
+  var result = Array.from(polygon.border).map((edge_str) => {
+    [A, B] = JSON.parse(edge_str);
+    return [[A.x, A.y], [B.x, B.y]];
   })
-  return {"type":"Feature","geometry": {"type":"Polygon","coordinates":[result]}}
-}
-
-function getClosestPointIndex(point, drawing, isHorizontal) {
-  console.log("getClosestPoint", point, drawing, isHorizontal)
-  let sameAxisPoints = drawing.filter(el => isHorizontal ? (el.x == point.x) : (el.y == point.y))//.map(el => isHorizontal ? el.y : el.x)
-  let reduced = sameAxisPoints.reduce((previous, current) => {
-    return (current > previous && current < point) ? current : previous
-  })
-
-  console.log(reduced)
-  console.log(drawing.indexOf(reduced))
+  const feature = {"type":"Feature", /*'properties': {'type': polygon.type },*/"geometry": {"type":"MultiLineString","coordinates":result}};
+  return feature;
 }
 /////////////////////  ESTATES END  /////////////////////
 
@@ -497,9 +519,94 @@ function rotate(arr, count) {
 
 
 
-// function generateEstatesJSON(parcels) {
+const { createCanvas } = require('canvas')
+function normalizeVertices(string_vertices) {
 
-// }
+  const vertices = Array.from(string_vertices).map(JSON.parse);
+  let minx = 123456789;
+  let miny = 123456789;
+  for (const vs  of vertices) {
+    if (vs.x < minx) minx = vs.x;
+    if (vs.y < miny) miny = vs.y;
+  }
+  const padded = vertices.map((v)=>{
+    return {x: v.x-minx, y: v.y-miny};
+  });
+
+  return padded.map((v)=>{
+    return {x: v.x/parcelSize, y: v.y/parcelSize};
+  });
+}
+function normalizeCenters(center_set) {
+  const centers = Array.from(center_set);
+  let minx = 123456789;
+  let miny = 123456789;
+  for (const vs  of centers) {
+    if (vs.x < minx) minx = vs.x;
+    if (vs.y < miny) miny = vs.y;
+  }
+  const padded = centers.map((v)=>{
+    return {x: v.x-minx, y: v.y-miny};
+  });
+  return padded;
+}
+function normalizeBorder(border_string) {
+  const border = Array.from(border_string).map(JSON.parse);
+  let minx = 123456789;
+  let miny = 123456789;
+  for (const [A, B] of border) {
+    if (A.x < minx) minx = A.x;
+    if (A.y < miny) miny = A.y;
+    if (B.x < minx) minx = B.x;
+    if (B.y < miny) miny = B.y;
+  }
+  const padded = border.map(([A,B])=>{
+    return [{x: A.x-minx, y: A.y-miny}, {x: B.x-minx, y: B.y-miny}];
+  });
+  
+  return padded.map(([A,B])=>{
+    return [{x: A.x/parcelSize, y: A.y/parcelSize}, {x: B.x/parcelSize, y: B.y/parcelSize}];
+  });
+}
+function drawPolygon({vertices, centers, border, estate_id}) {
+  const normalized = normalizeVertices(vertices);
+  const normCenters = normalizeCenters(centers);
+  const normBorder = normalizeBorder(border);
+  
+  const width = 800;
+  const height = 800;
+  const canvas = createCanvas(width, height);
+  const drawScale = 10;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, width, height);
+  // tiles
+  ctx.fillStyle = 'red';
+  Array.from(normCenters).map((c)=>{
+    ctx.fillRect(c.x*drawScale+100+drawScale/10,c.y*drawScale+100+drawScale/10,4*drawScale/5,4*drawScale/5);
+  })
+  // vertices
+  ctx.fillStyle = 'blue';
+  normalized.map((v) => {
+    ctx.fillRect(v.x*drawScale+100-drawScale/10,v.y*drawScale+100-drawScale/10,drawScale/5,drawScale/5);
+  });
+  // edges
+  ctx.fillStyle = 'green';
+  normBorder.map(([A, B]) => {
+    const dx = B.x - A.x;
+    const dy = B.y - A.y;
+
+    ctx.beginPath();
+    ctx.moveTo(A.x*drawScale+100, A.y*drawScale+100);
+    ctx.lineTo(B.x*drawScale+100, B.y*drawScale+100);
+    ctx.closePath();
+    ctx.stroke();
+  });
+  // save image
+  const buffer = canvas.toBuffer('image/png');
+  fs.writeFileSync('./image.png', buffer);
+  console.log('estate id=',estate_id);
+}
 
 
 function mockEstate() {
