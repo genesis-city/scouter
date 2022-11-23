@@ -1,58 +1,87 @@
 const axios = require('axios');
-const inquirer = require('inquirer');
-const { Console, dir} = require('console');
+const axiosRetry = require('axios-retry');
+axiosRetry(axios, { retries: 5 } );
 const fs = require('fs');
-const { Int32, ConnectionCheckOutStartedEvent } = require('mongodb');
 let mongoose = require('mongoose')
 let parcelSchema = new mongoose.Schema({ coords: String, id: String, dirty: Boolean })
 const Parcel = mongoose.model('Parcel', parcelSchema)
 const dotenv = require("dotenv");
 dotenv.config()
-
 var geoJsonFile = fs.createWriteStream('geo.json')
 var coordsStream = fs.createWriteStream('coords.txt')
 var coordsRawStream = fs.createWriteStream('raw_coords.txt')
 var logger = fs.createWriteStream('logs.txt', {flags: 'a' /*append*/})
-const args = process.argv.slice(2)
+const { Command } = require('commander');
+const program = new Command();
 
-const choices = [
-  'Full run', 
-  'Mark all as clean',
-  'Round coords for unity', 
-  // 'Delete database',
-  'Estate tests'];
+var resumeAt = null
 
-inquirer
-  .prompt([
-    {
-      type: 'list',
-      name: 'mode',
-      message: 'What do you want to do?',
-      choices: choices,
-    },
-  ])
-  .then(answers => {
-    switch (answers.mode) {
-      case choices[0]:
-        run().catch(error => logMessage(error.stack))
-        break;
-      case choices[1]:
-        markAllAsClean().catch(error => logMessage(error.stack))
-        break;
-      case choices[2]:
-        roundCoordsForUnity().catch(error => logMessage(error.stack))
-        break;
-      // case choices[3]:
-      //   deleteDatabase().catch(error => logMessage(error.stack))
-      //   break;
-      case choices[3]:
-        getEstates().catch(error => logMessage(error.stack))
-        break;
-      default:
-        logMessage('Option not found');
-        process.exit();
+program
+  .name('Scouter')
+
+program.command('scout')
+  .description('Scout for changes in all parcels.')
+  .option('-c, --clean', 'Clean database (dirty=false) before starting scouting')
+  .option('-r, --resume <x,y>', 'Coords to resume scouting at (eg. -142,38)')
+  .option('-p, --parcels-changelog', 'Generate coords.txt and geo.json with modified parcels')
+  .action(async (option) => {
+    if (option.clean) {
+      let cleanResult = await markAllAsClean().catch(error => {
+        logMessage(error.stack) 
+        process.exit()
+        }) 
+      console.log(cleanResult)
     }
+    if (option.resume) {
+      resumeAt = option.resume
+      console.log("RESUME AT:", option.resume)
+    }
+
+    let runResult = await run().catch(error=> { 
+      logMessage(error.stack)
+      process.exit()
+    })
+    console.log(runResult)
+
+    if (option.parcelsChangelog) {
+      let generateCoordsResult = await roundCoordsForUnity().catch(error => logMessage(error.stack))
+      console.log(generateCoordsResult)
+    }
+    console.log("All scout tasks finished")
+    process.exit()
   });
+
+program.command('parcels-changelog')
+  .description('Generate coords.txt and geo.json with modified parcels')
+  .action(async () => {
+    let generateCoordsResult = await roundCoordsForUnity().catch(error => logMessage(error.stack))
+    console.log(generateCoordsResult)
+    process.exit()
+  })
+
+program.command('draw-estates')
+  .description('Generate estates.json')
+  .action(async () => {
+    let estatesResult = await getEstates()
+    console.log(estatesResult)
+    process.exit()
+  })
+
+  program.command('test-retry')
+  .action(async () => {
+    const response = await axios.get(`https://peer.decentraland.org/123`)
+    console.log("surunununun")
+  })
+
+// program.command('delete-database')
+//   .description('WARNING: Delete all database')
+//   .action(async () => {
+//     let deleteResult = await deleteDatabase().catch(error => logMessage(error.stack))
+//     console.log(deleteResult)
+//     process.exit
+//   })
+
+program.parse();
 
 async function run() {
   logMessage("Full run started")
@@ -71,12 +100,12 @@ async function run() {
     logMessage(`Total parcels after filter: ${allCoords.length}`)
   }
 
-  if (args.includes('resume')) {
-    let resumeAtIndex = allCoords.indexOf(args[1])
+  if (resumeAt != null) {
+    let resumeAtIndex = allCoords.indexOf(resumeAt)
     logMessage(`Found resume coord at index: ${resumeAtIndex}`)
     logMessage(`AllCoords: ${allCoords.length}`)
     if (resumeAtIndex > 0) {
-      var removed = allCoords.splice(0, resumeAtIndex)
+      allCoords.splice(0, resumeAtIndex)
       logMessage(`Resume at: ${resumeAtIndex}, allCoords: ${allCoords.length}`)
     } 
   }
@@ -84,12 +113,7 @@ async function run() {
   // Start making requests
   let result = await manageCoordsRequests(allCoords)
   logMessage(result)
-
-  // Make coords.txt in desktop for Unity
-  // await roundCoordsForUnity()
-
-  logMessage("Full run finished")
-  logger.end()
+  return result
 }
 
 // FUNCTIONS
@@ -174,7 +198,7 @@ async function getDirtyParcels() {
 async function markAllAsClean() {
   await connectToDB()
   let parcels = await Parcel.updateMany(null, { dirty: false })
-  logMessage(`All cleaned - ${parcels.acknowledged} ${(await getDirtyParcels()).length}`)
+  return `All cleaned - ${parcels.acknowledged} ${(await getDirtyParcels()).length}`
 }
 
 async function deleteDatabase() {
