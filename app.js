@@ -24,7 +24,12 @@ program.command('scout')
   .option('-c, --clean', 'Clean database (dirty=false) before starting scouting')
   .option('-r, --resume <x,y>', 'Coords to resume scouting at (eg. -142,38)')
   .option('-p, --parcels-changelog', 'Generate coords.txt and geo.json with modified parcels')
+  .option('-t, --test', 'Test database connection configuration')
   .action(async (option) => {
+    if (option.test) {
+      testDBConnection();
+      return;
+    }
     if (option.clean) {
       let cleanResult = await markAllAsClean().catch(error => {
         logMessage(error.stack) 
@@ -67,11 +72,6 @@ program.command('draw-estates')
     process.exit()
   })
 
-  program.command('test-retry')
-  .action(async () => {
-    const response = await axios.get(`https://peer.decentraland.org/123`)
-    console.log("surunununun")
-  })
 
 // program.command('delete-database')
 //   .description('WARNING: Delete all database')
@@ -95,7 +95,7 @@ async function run() {
 
   // Check if need to apply filter to allCoords array
   if (dbParcels.length > 0) {
-    logMessage(`Filtering array (${allCoords.length}) with db parcels...`)
+    logMessage(`Filtering array (${allCoords.length}) with db parcels (this will remove already dirty parcels)...`)
     allCoords = filterParcelsWithDB(allCoords, dbParcels)
     logMessage(`Total parcels after filter: ${allCoords.length}`)
   }
@@ -131,7 +131,7 @@ function generateCoordsArray() {
 }
 
 function filterParcelsWithDB(allCoords, dbParcels) {
-  let dbCoords = dbParcels.map(parcel => parcel.coords)
+  let dbCoords = dbParcels.map(parcel => parcel.coords);
   return allCoords.filter(el => !dbCoords.includes(el))
 }
 
@@ -142,6 +142,7 @@ async function manageCoordsRequests(allCoords) {
     let targetCoords = allCoords[0]
     let parcel = await getContentFromCoords(targetCoords)
     for await (const coord of parcel.pointers) {
+      // TODO: store a cache in memory of dirty parcels to reduce amount of requests
       await compareParcelAndSave(coord, parcel.id)
     }
     allCoords = allCoords.filter(el => !parcel.pointers.includes(el))
@@ -170,8 +171,8 @@ async function getContentFromCoords(coords) {
 
 async function compareParcelAndSave(coords, id) {
   let parcel = await Parcel.findOne({ coords: `${coords}` }).exec();
-  if ((parcel != null) && (parcel.dirty == true || parcel.id == id)) {
-    logMessage(`Coords ${coords} already saved/dirty`)  
+  if (parcel != null && parcel.id == id) {
+    logMessage(`Coords ${coords} already saved as dirty, skipping...`)  
     return
   }
   createAndSaveParcel(coords, id)
@@ -180,7 +181,9 @@ async function compareParcelAndSave(coords, id) {
 // Database methods
 async function connectToDB() {
   logMessage("Connecting to db...")
-  await mongoose.connect(`mongodb+srv://${process.env.DB_USERNAME}:${process.env.DB_PASSWORD}@mapper.odqgd.mongodb.net/myFirstDatabase?retryWrites=true&w=majority`)
+  const dbConnectionUrl = `mongodb+srv://${process.env.DB_USERNAME}:${process.env.DB_PASSWORD}@${process.env.DB_URL}/myFirstDatabase?retryWrites=true&w=majority`;
+  // console.log(dbConnectionUrl);
+  await mongoose.connect(dbConnectionUrl)
   logMessage("Db connected.")
 }
 
@@ -193,6 +196,11 @@ function createAndSaveParcel(coords, id) {
 
 async function getDirtyParcels() { 
   return await Parcel.find({ dirty: true }).exec()
+}
+
+async function testDBConnection() {
+  await connectToDB()
+  return 'done';
 }
 
 async function markAllAsClean() {
