@@ -7,9 +7,6 @@ let parcelSchema = new mongoose.Schema({ coords: String, id: String, dirty: Bool
 const Parcel = mongoose.model('Parcel', parcelSchema)
 const dotenv = require("dotenv");
 dotenv.config()
-var geoJsonFile = fs.createWriteStream('geo.json')
-var coordsStream = fs.createWriteStream('coords.txt')
-var coordsRawStream = fs.createWriteStream('raw_coords.txt')
 var logger = fs.createWriteStream('logs.txt', {flags: 'a' /*append*/})
 const { Command } = require('commander');
 const program = new Command();
@@ -220,13 +217,16 @@ const unitySize = 5
 const roundForUnitySize = x => Math.round(x/unitySize)*unitySize
 
 async function roundCoordsForUnity() {
+  var coordsStream = fs.createWriteStream('coords.txt')
+  var coordsRawStream = fs.createWriteStream('raw_coords.txt')
+  var geoJsonFile = fs.createWriteStream('geo.json')
   logMessage("Rounding coords for unity")
   await connectToDB()
   let dirtyParcels = await getDirtyParcels()
 
   console.log(`Dirty parcels found: ${dirtyParcels.length}`)
   let rawCoords = dirtyParcels.slice()
-  generateGeoJson(rawCoords)
+  generateGeoJson(rawCoords, geoJsonFile)
   var groupedRawCoords = []
 
   while (rawCoords.length > 0) {
@@ -301,7 +301,7 @@ async function roundCoordsForUnity() {
 const parcelSize = 40
 const mapSize = 152
 
-function generateGeoJson(coords) {
+function generateGeoJson(coords, geoJsonFile) {
   // console.log(allRaw)
   let coordsJson = []
   Array.from(coords).forEach(el => {
