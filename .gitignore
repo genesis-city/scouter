@@ -129,7 +129,10 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# output
 coords.txt
 geo.json
 raw_coords.txt
 estates.json
+pois.json

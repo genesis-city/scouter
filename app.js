@@ -10,8 +10,15 @@ dotenv.config()
 var logger = fs.createWriteStream('logs.txt', {flags: 'a' /*append*/})
 const { Command } = require('commander');
 const program = new Command();
-
 var resumeAt = null
+/* --------------------------- Points of Interest Start--------------------------- */
+const coordsEndpoint = 'https://peer.decentraland.org/lambdas/contracts/pois';
+const metaDataBaseURL = 'https://places.decentraland.org/api/places?';
+const missingNames = require('./missingNames.js');
+// missingNames is a list of POIs and their names that are not present in metaDataBaseURL endpoint
+const invalidPOIs = readInvalidPOIsList();
+// invalidPOIs are Points of Interest that are present in the smartContract (0x0ef15a1c7a49429a36cb46d4da8c53119242b54e) but then filtered by the unity-renderer and shouldn't be present in decentraland's map.
+/* --------------------------- Points of Interest End--------------------------- */
 
 program
   .name('Scouter')
@@ -69,6 +76,11 @@ program.command('draw-estates')
     process.exit()
   })
 
+program.command('update-pois')
+  .description('Generate pois.json')
+  .action(async () => {
+    updatePOIsData();
+  })
 
 // program.command('delete-database')
 //   .description('WARNING: Delete all database')
@@ -644,3 +656,141 @@ function drawPolygon({vertices, centers, border, estate_id}) {
 function mockEstate() {
   return JSON.parse('{"nft":{"id":"0x959e104e1a4db6317fa58f8295f586e1a978c297-3847","tokenId":"3847","contractAddress":"0x959e104e1a4db6317fa58f8295f586e1a978c297","activeOrderId":"0x7068c5480f4f73895395e216ea32e45d81ae758c4e13f0db43fce0df3d2e3070","openRentalId":null,"owner":"0x3a572361910939dfc230bc010dadc9de7bd3af4b","name":"South  left gate","image":"https://api.decentraland.org/v1/estates/3847/map.png","url":"/contracts/0x959e104e1a4db6317fa58f8295f586e1a978c297/tokens/3847","data":{"estate":{"description":"South  left gate!","size":13,"parcels":[{"x":-2,"y":-150},{"x":-2,"y":-144},{"x":-2,"y":-143},{"x":-2,"y":-142},{"x":-1,"y":-150},{"x":-1,"y":-149},{"x":-1,"y":-148},{"x":-1,"y":-147},{"x":-1,"y":-146},{"x":-1,"y":-145},{"x":-1,"y":-144},{"x":-1,"y":-143},{"x":-1,"y":-142}]}},"issuedId":null,"itemId":null,"category":"estate","network":"ETHEREUM","chainId":1,"createdAt":1601652467000,"updatedAt":1663477751000,"soldAt":0},"order":{"id":"0x7068c5480f4f73895395e216ea32e45d81ae758c4e13f0db43fce0df3d2e3070","marketplaceAddress":"0x8e5660b4ab70168b5a6feea0e0315cb49c8cd539","contractAddress":"0x959e104e1a4db6317fa58f8295f586e1a978c297","tokenId":"3847","owner":"0x3a572361910939dfc230bc010dadc9de7bd3af4b","buyer":null,"price":"1755001000000000000000000","status":"open","network":"ETHEREUM","chainId":1,"expiresAt":1671667200000,"createdAt":1643357946000,"updatedAt":1643357946000},"rental":null}')
 }
+
+/* -------------------------------------------------------------------------- */
+/*                          Points Of Interest START                          */
+/* -------------------------------------------------------------------------- */
+
+function updatePOIsData() {
+  // Fetch POIs coords
+  fetch(coordsEndpoint)
+  .then(res => res.json())
+  .then(data => {
+      const rawPoiLocations = data;
+      const POIsFound = data.length;
+      console.log(`POIs found: ${POIsFound}`);
+
+      /* --------------------------- Remove invalid POIs -------------------------- */
+      invalidPOIs.forEach(poi => {
+          const indexOfPOI = rawPoiLocations.indexOf(poi);
+          rawPoiLocations.splice(indexOfPOI, 1);
+      });
+      console.log(`POIs removed: ${POIsFound - rawPoiLocations.length}`);
+      console.log(`POIs remained: ${rawPoiLocations.length}`);
+      const POIsObjects = formatPoiLocations(rawPoiLocations);
+
+      /* ------------------------- Build metaDataEndPoints ------------------------ */
+      // POIs metaData EndPoint has a limit response of 100 element. We need to split the request to obtain all the elements.
+
+      const requestLimit = 100;
+      const metadataRequests = [];
+      const numRequests = Math.ceil(rawPoiLocations.length / requestLimit);
+
+      for (let i = 0; i < numRequests; i++) {
+          let metaDataEndpoint = metaDataBaseURL;
+
+          const start = i * requestLimit;
+          const end = Math.min(start + requestLimit, rawPoiLocations.length);
+
+          for (let j = start; j < end; j++) {
+              const poi = POIsObjects[j];
+              metaDataEndpoint = metaDataEndpoint.concat(`&positions=${poi.lon}%2C${poi.lat}`);
+          }
+
+          metadataRequests.push(fetch(metaDataEndpoint).then(res => res.json()).then(data => data.data));
+      }
+
+      /* --------------------------- Fetch POIs metaData -------------------------- */
+      Promise.all(metadataRequests)
+      .then((responses) => {
+          const POIsMetaData = [].concat(...responses);
+          if (POIsObjects.length - POIsMetaData.length !== missingNames.length) {
+              console.log(`
+  # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+  # ----------------------------------------------------------------------------- #
+     There are ${POIsObjects.length - POIsMetaData.length} POIs with missing names and ${missingNames.length} POIs in the missing name list.   
+  #  Update de missingNames.js file.                                              #
+  #                                                                               #
+  #  The coords with missing names are:                                           #
+  # ----------------------------------------------------------------------------- #`);
+          }
+          /* ----------------------------- Add POIs names ----------------------------- */
+          addPOIsNames(rawPoiLocations, POIsMetaData, POIsObjects);
+
+          /* ---------------------------- Add missingNames ---------------------------- */
+          POIsObjects.forEach(poi => {
+              if (!poi.name) {
+                  missingNames.forEach(location => {
+                      if (poi.lon === location.lon && poi.lat === location.lat) {
+                          poi.name = location.name;
+                      }
+                  });
+                  if (!poi.name) {
+                      console.log(`           Missing Name at coords: ${poi.lon},${poi.lat}
+  # ----------------------------------------------------------------------------- #`);
+                  }
+              }
+          })
+          console.log('    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #');
+
+          /* ---------------------- Export POIs data in JSON file pois.json --------------------- */
+          const POIsData = {
+              title: 'POIsData',
+              data: POIsObjects,
+          }
+          exportJSON(POIsData);
+      })
+      .catch(err => console.log(err));
+  })
+  .catch(err => console.log(err));
+}
+
+function formatPoiLocations(rawPoiLocations) {
+  const POIs = [];
+  rawPoiLocations.forEach(element => {
+      const locationString = element.split(',');
+      const locationNumber = locationString.map(coord => {
+          return parseInt(coord);
+      })
+      POIs.push({
+          lon: locationNumber[0],
+          lat: locationNumber[1],
+      })
+  });
+  return POIs;
+}
+
+function addPOIsNames(rawPoiLocations, POIsMetaData, POIsObjects) {
+  for (let i = 0; i < POIsObjects.length; i++) {
+      const location = rawPoiLocations[i];
+      
+      POIsMetaData.forEach(element => {
+          const POIfound = element.positions.find(e => e === location);
+          
+          if (POIfound) {
+              POIsObjects[i].name = element.title;
+          }
+      });
+  }
+}
+
+function readInvalidPOIsList() {
+  const fs = require('fs');
+  const invalidPOIs = fs.readFileSync('invalidPOIsList.txt', 'utf8');
+  const invalidPOIsArray = invalidPOIs.split('\n');
+  return invalidPOIsArray
+}
+
+function exportJSON(data) {
+  const jsonData = JSON.stringify(data);
+  const fs = require('fs');
+
+  fs.writeFile('pois.json', jsonData, (err) => {
+  if (err) throw err;
+  console.log('POIsData saved to file pois.json!');
+  });
+}
+
+/* -------------------------------------------------------------------------- */
+/*                           Points Of Interest END                           */
+/* -------------------------------------------------------------------------- */
