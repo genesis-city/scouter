@@ -7,14 +7,14 @@ let parcelSchema = new mongoose.Schema({ coords: String, id: String, dirty: Bool
 const Parcel = mongoose.model('Parcel', parcelSchema)
 const dotenv = require("dotenv");
 dotenv.config()
-var logger = fs.createWriteStream('logs.txt', {flags: 'a' /*append*/})
+var logger = fs.createWriteStream('./output/logs.txt', {flags: 'a' /*append*/})
 const { Command } = require('commander');
 const program = new Command();
 var resumeAt = null
 /* --------------------------- Points of Interest Start--------------------------- */
 const coordsEndpoint = 'https://peer.decentraland.org/lambdas/contracts/pois';
 const metaDataBaseURL = 'https://places.decentraland.org/api/places?';
-const missingNames = require('./missingNames.js');
+const missingNames = require('./input/missingNames.js');
 // missingNames is a list of POIs and their names that are not present in metaDataBaseURL endpoint
 const invalidPOIs = readInvalidPOIsList();
 // invalidPOIs are Points of Interest that are present in the smartContract (0x0ef15a1c7a49429a36cb46d4da8c53119242b54e) but then filtered by the unity-renderer and shouldn't be present in decentraland's map.
@@ -229,14 +229,14 @@ const unitySize = 5
 const roundForUnitySize = x => Math.round(x/unitySize)*unitySize
 
 async function roundCoordsForUnity() {
-  var coordsStream = fs.createWriteStream('coords.txt')
-  var coordsRawStream = fs.createWriteStream('raw_coords.txt')
-  var geoJsonFile = fs.createWriteStream('geo.json')
+  var coordsStream = fs.createWriteStream('./output/coords.txt')
+  var coordsRawStream = fs.createWriteStream('./output/raw_coords.txt')
+  var geoJsonFile = fs.createWriteStream('./output/geo.json')
   logMessage("Rounding coords for unity")
   await connectToDB()
   let dirtyParcels = await getDirtyParcels()
 
-  console.log(`Dirty parcels found: ${dirtyParcels.length}`)
+  logMessage(`Dirty parcels found: ${dirtyParcels.length}`)
   let rawCoords = dirtyParcels.slice()
   generateGeoJson(rawCoords, geoJsonFile)
   var groupedRawCoords = []
@@ -711,7 +711,7 @@ function updatePOIsData() {
      There are ${POIsObjects.length - POIsMetaData.length} POIs with missing names and ${missingNames.length} POIs in the missing name list.   
   #  Update de missingNames.js file.                                              #
   #                                                                               #
-  #  The coords with missing names are:                                           #
+  #  Coords with missing names:                                                   #
   # ----------------------------------------------------------------------------- #`);
           }
           /* ----------------------------- Add POIs names ----------------------------- */
@@ -726,12 +726,12 @@ function updatePOIsData() {
                       }
                   });
                   if (!poi.name) {
-                      console.log(`           Missing Name at coords: ${poi.lon},${poi.lat}
+                      console.log(`\n           Missing Name at coords: ${poi.lon},${poi.lat}
   # ----------------------------------------------------------------------------- #`);
                   }
               }
           })
-          console.log('    # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #');
+          console.log('  # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #');
 
           /* ---------------------- Export POIs data in JSON file pois.json --------------------- */
           const POIsData = {
@@ -740,9 +740,9 @@ function updatePOIsData() {
           }
           exportJSON(POIsData);
       })
-      .catch(err => console.log(err));
+      .catch(err => logMessage(err));
   })
-  .catch(err => console.log(err));
+  .catch(err => logMessage(err));
 }
 
 function formatPoiLocations(rawPoiLocations) {
@@ -776,7 +776,7 @@ function addPOIsNames(rawPoiLocations, POIsMetaData, POIsObjects) {
 
 function readInvalidPOIsList() {
   const fs = require('fs');
-  const invalidPOIs = fs.readFileSync('invalidPOIsList.txt', 'utf8');
+  const invalidPOIs = fs.readFileSync('./input/invalidPOIsList.txt', 'utf8');
   const invalidPOIsArray = invalidPOIs.split('\n');
   return invalidPOIsArray
 }
@@ -785,9 +785,9 @@ function exportJSON(data) {
   const jsonData = JSON.stringify(data);
   const fs = require('fs');
 
-  fs.writeFile('pois.json', jsonData, (err) => {
+  fs.writeFile('./output/pois.json', jsonData, (err) => {
   if (err) throw err;
-  console.log('POIsData saved to file pois.json!');
+  console.log('POIsData saved to file ./output/pois.json!');
   });
 }
 

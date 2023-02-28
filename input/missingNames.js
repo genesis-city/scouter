@@ -79,6 +79,16 @@ const missingNames = [
         lat: 74,
         name: 'Serena Elis',
     },
+    {
+        lon: -150,
+        lat: 75,
+        name: 'U-Meta Stadium',
+    },
+    {
+        lon: 130,
+        lat: 130,
+        name: 'Curation Station',
+    },
 ]
 
 module.exports = missingNames;
