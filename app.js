@@ -668,15 +668,16 @@ function updatePOIsData() {
   .then(data => {
       const rawPoiLocations = data;
       const POIsFound = data.length;
-      console.log(`POIs found: ${POIsFound}`);
+      logMessage('/* --------------------------- Points Of Interest --------------------------- */')
+      logMessage(`POIs found: ${POIsFound}`);
 
       /* --------------------------- Remove invalid POIs -------------------------- */
       invalidPOIs.forEach(poi => {
           const indexOfPOI = rawPoiLocations.indexOf(poi);
           rawPoiLocations.splice(indexOfPOI, 1);
       });
-      console.log(`POIs removed: ${POIsFound - rawPoiLocations.length}`);
-      console.log(`POIs remained: ${rawPoiLocations.length}`);
+      logMessage(`POIs removed: ${POIsFound - rawPoiLocations.length}`);
+      logMessage(`POIs remained: ${rawPoiLocations.length}`);
       const POIsObjects = formatPoiLocations(rawPoiLocations);
 
       /* ------------------------- Build metaDataEndPoints ------------------------ */
