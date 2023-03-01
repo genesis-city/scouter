@@ -705,7 +705,7 @@ function updatePOIsData() {
       .then((responses) => {
           const POIsMetaData = [].concat(...responses);
           if (POIsObjects.length - POIsMetaData.length !== missingNames.length) {
-              console.log(`
+              logMessage(`
   # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
   # ----------------------------------------------------------------------------- #
      There are ${POIsObjects.length - POIsMetaData.length} POIs with missing names and ${missingNames.length} POIs in the missing name list.   
@@ -726,7 +726,7 @@ function updatePOIsData() {
                       }
                   });
                   if (!poi.name) {
-                      console.log(`\n           Missing Name at coords: ${poi.lon},${poi.lat}
+                      logMessage(`\n           Missing Name at coords: ${poi.lon},${poi.lat}
   # ----------------------------------------------------------------------------- #`);
                   }
               }
@@ -787,7 +787,7 @@ function exportJSON(data) {
 
   fs.writeFile('./output/pois.json', jsonData, (err) => {
   if (err) throw err;
-  console.log('POIsData saved to file ./output/pois.json!');
+  logMessage('POIsData saved to file ./output/pois.json!');
   });
 }
 
