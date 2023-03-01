@@ -7,6 +7,8 @@ let parcelSchema = new mongoose.Schema({ coords: String, id: String, dirty: Bool
 const Parcel = mongoose.model('Parcel', parcelSchema)
 const dotenv = require("dotenv");
 dotenv.config()
+var dir = './output';
+!fs.existsSync(dir) && fs.mkdirSync(dir);
 var logger = fs.createWriteStream('./output/logs.txt', {flags: 'a' /*append*/})
 const { Command } = require('commander');
 const program = new Command();
@@ -668,7 +670,7 @@ function updatePOIsData() {
   .then(data => {
       const rawPoiLocations = data;
       const POIsFound = data.length;
-      logMessage('/* --------------------------- Points Of Interest --------------------------- */')
+      logMessage('\n/* --------------------------- Points Of Interest --------------------------- */')
       logMessage(`POIs found: ${POIsFound}`);
 
       /* --------------------------- Remove invalid POIs -------------------------- */
