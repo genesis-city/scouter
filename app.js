@@ -538,7 +538,7 @@ function generateEstatesJSON(polygons) {
   })
   
   let estatesJson = JSON.stringify({"type":"FeatureCollection", "crs": {"type": "name", "properties": {"name": "ESTATES"}}, "features":polygonJSONs}, null, 0)
-  fs.writeFileSync('./estates.json', estatesJson);
+  fs.writeFileSync('./output/estates.json', estatesJson);
   console.log("Estates json created");
 }
 
