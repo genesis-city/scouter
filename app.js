@@ -340,7 +340,7 @@ function logMessage(message) {
 }
 
 function getCurrentDateAndTime() {
-  return `${new Date().toString()}`
+  return `${new Date().toUTCString()}`
 }
 
 
