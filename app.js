@@ -678,7 +678,7 @@ function updatePOIsData() {
           const indexOfPOI = rawPoiLocations.indexOf(poi);
           rawPoiLocations.splice(indexOfPOI, 1);
       });
-      logMessage(`POIs removed: ${POIsFound - rawPoiLocations.length}`);
+      logMessage(`Invalid POIs: ${POIsFound - rawPoiLocations.length}`);
       logMessage(`POIs remained: ${rawPoiLocations.length}`);
       const POIsObjects = formatPoiLocations(rawPoiLocations);
 
@@ -707,39 +707,16 @@ function updatePOIsData() {
       Promise.all(metadataRequests)
       .then((responses) => {
           const POIsMetaData = [].concat(...responses);
-          if (POIsObjects.length - POIsMetaData.length !== missingNames.length) {
-              logMessage(`
-  # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
-  # ----------------------------------------------------------------------------- #
-     There are ${POIsObjects.length - POIsMetaData.length} POIs with missing names and ${missingNames.length} POIs in the missing name list.   
-  #  Update de missingNames.js file.                                              #
-  #                                                                               #
-  #  Coords with missing names:                                                   #
-  # ----------------------------------------------------------------------------- #`);
-          }
           /* ----------------------------- Add POIs names ----------------------------- */
           addPOIsNames(rawPoiLocations, POIsMetaData, POIsObjects);
 
-          /* ---------------------------- Add missingNames ---------------------------- */
-          POIsObjects.forEach(poi => {
-              if (!poi.name) {
-                  missingNames.forEach(location => {
-                      if (poi.lon === location.lon && poi.lat === location.lat) {
-                          poi.name = location.name;
-                      }
-                  });
-                  if (!poi.name) {
-                      logMessage(`\n           Missing Name at coords: ${poi.lon},${poi.lat}
-  # ----------------------------------------------------------------------------- #`);
-                  }
-              }
-          })
-          console.log('  # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #');
+          /* ----------------------------- Remove POIs with no name ----------------------------- */
+          const remainedPOIs = removePOIsWithNoName(POIsObjects);
 
           /* ---------------------- Export POIs data in JSON file pois.json --------------------- */
           const POIsData = {
-              title: 'POIsData',
-              data: POIsObjects,
+            title: 'POIsData',
+            data: remainedPOIs,
           }
           exportJSON(POIsData);
       })
@@ -775,6 +752,19 @@ function addPOIsNames(rawPoiLocations, POIsMetaData, POIsObjects) {
           }
       });
   }
+}
+
+function removePOIsWithNoName(POIsObjects) {
+  const filteredPOIsObjects = POIsObjects.filter(poi => {
+    if (!poi.name) {
+      logMessage(`Eliminated POI with no name at (${poi.lon}, ${poi.lat})`);
+      return false
+    }
+    return true;
+  });
+  logMessage(`POIs remained: ${filteredPOIsObjects.length}`);
+  console.log('  # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #');
+  return filteredPOIsObjects;
 }
 
 function readInvalidPOIsList() {
