@@ -16,8 +16,6 @@ var resumeAt = null
 /* --------------------------- Points of Interest Start--------------------------- */
 const coordsEndpoint = 'https://peer.decentraland.org/lambdas/contracts/pois';
 const metaDataBaseURL = 'https://places.decentraland.org/api/places?';
-const missingNames = require('./input/missingNames.js');
-// missingNames is a list of POIs and their names that are not present in metaDataBaseURL endpoint
 const invalidPOIs = readInvalidPOIsList();
 // invalidPOIs are Points of Interest that are present in the smartContract (0x0ef15a1c7a49429a36cb46d4da8c53119242b54e) but then filtered by the unity-renderer and shouldn't be present in decentraland's map.
 /* --------------------------- Points of Interest End--------------------------- */
