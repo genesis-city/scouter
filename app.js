@@ -360,37 +360,37 @@ async function getEstates() {
       const fdata = JSON.parse(fs.readFileSync(fname))
       response = {data: fdata};
     } else {
-      console.log('Getting all tiles from https://api.decentraland.org/v1/tiles...')
-      response = await axios.get(`https://api.decentraland.org/v1/tiles`)
+      console.log('Getting all tiles from https://api.decentraland.org/v2/tiles...')
+      response = await axios.get(`https://api.decentraland.org/v2/tiles`)
       // fs.writeFileSync(fname, JSON.stringify(response.data));
     }
     const tiles = response.data.data;
     // all tiles
     console.log(Object.entries(tiles).length, 'total tiles');
     // tiles belonging to an estate
-    tilesInEstate = Object.entries(tiles).filter(([coord, info]) => 'estate_id' in info);
+    tilesInEstate = Object.entries(tiles).filter(([coord, info]) => 'estateId' in info);
     console.log(tilesInEstate.length, 'tiles within estate')
 
     // build tiles for each estate id
     tilesForEstate = {}
     tilesInEstate.every(([_, info]) => {
-      if (!tilesForEstate[info.estate_id]) {
-        tilesForEstate[info.estate_id] = []
+      if (!tilesForEstate[info.estateId]) {
+        tilesForEstate[info.estateId] = []
       }
-      tilesForEstate[info.estate_id].push(info)
+      tilesForEstate[info.estateId].push(info)
       return true;
     })
     console.log(Object.entries(tilesForEstate).length, 'estates total containing', tilesInEstate.length, 'tiles');
     
     let allPolygons = []
     // const specific  = 7;
-    Object.entries(tilesForEstate)/*.slice(specific,specific+1)*/.every(([estate_id, tiles]) => {
-      // if (estate_id != "4274") { //1817 hardcore
+    Object.entries(tilesForEstate)/*.slice(specific,specific+1)*/.every(([estateId, tiles]) => {
+      // if (estateId != "4274") { //1817 hardcore
       //   return true;
       // }
-      const estatePolygons = drawEstate(estate_id, tiles);
+      const estatePolygons = drawEstate(estateId, tiles);
       estatePolygons.every((polygon) => {
-        polygon.estate_id = estate_id;
+        polygon.estateId = estateId;
         polygon.type = tiles[0].type;
         polygon.name = tiles[0].name;
         allPolygons.push(polygon);
@@ -426,8 +426,8 @@ function remove(list, elem) {
   list.splice(list.indexOf(elem), 1);
 }
 
-function drawEstate(estate_id, tiles) {
-  console.log("Drawing estate:", estate_id, tiles.length);
+function drawEstate(estateId, tiles) {
+  console.log("Drawing estate:", estateId, tiles.length);
   let queue = tiles.map(tile => {
     const center = {x: tile.x, y: tile.y}
     return {center: center, points: centerToVertices(center), edges: centerToEdges(center)}
@@ -612,7 +612,7 @@ function normalizeBorder(border_string) {
     return [{x: A.x/parcelSize, y: A.y/parcelSize}, {x: B.x/parcelSize, y: B.y/parcelSize}];
   });
 }
-function drawPolygon({vertices, centers, border, estate_id}) {
+function drawPolygon({vertices, centers, border, estateId}) {
   const normalized = normalizeVertices(vertices);
   const normCenters = normalizeCenters(centers);
   const normBorder = normalizeBorder(border);
@@ -649,12 +649,12 @@ function drawPolygon({vertices, centers, border, estate_id}) {
   // save image
   const buffer = canvas.toBuffer('image/png');
   fs.writeFileSync('./image.png', buffer);
-  console.log('estate id=',estate_id);
+  console.log('estate id=',estateId);
 }
 
 
 function mockEstate() {
-  return JSON.parse('{"nft":{"id":"0x959e104e1a4db6317fa58f8295f586e1a978c297-3847","tokenId":"3847","contractAddress":"0x959e104e1a4db6317fa58f8295f586e1a978c297","activeOrderId":"0x7068c5480f4f73895395e216ea32e45d81ae758c4e13f0db43fce0df3d2e3070","openRentalId":null,"owner":"0x3a572361910939dfc230bc010dadc9de7bd3af4b","name":"South  left gate","image":"https://api.decentraland.org/v1/estates/3847/map.png","url":"/contracts/0x959e104e1a4db6317fa58f8295f586e1a978c297/tokens/3847","data":{"estate":{"description":"South  left gate!","size":13,"parcels":[{"x":-2,"y":-150},{"x":-2,"y":-144},{"x":-2,"y":-143},{"x":-2,"y":-142},{"x":-1,"y":-150},{"x":-1,"y":-149},{"x":-1,"y":-148},{"x":-1,"y":-147},{"x":-1,"y":-146},{"x":-1,"y":-145},{"x":-1,"y":-144},{"x":-1,"y":-143},{"x":-1,"y":-142}]}},"issuedId":null,"itemId":null,"category":"estate","network":"ETHEREUM","chainId":1,"createdAt":1601652467000,"updatedAt":1663477751000,"soldAt":0},"order":{"id":"0x7068c5480f4f73895395e216ea32e45d81ae758c4e13f0db43fce0df3d2e3070","marketplaceAddress":"0x8e5660b4ab70168b5a6feea0e0315cb49c8cd539","contractAddress":"0x959e104e1a4db6317fa58f8295f586e1a978c297","tokenId":"3847","owner":"0x3a572361910939dfc230bc010dadc9de7bd3af4b","buyer":null,"price":"1755001000000000000000000","status":"open","network":"ETHEREUM","chainId":1,"expiresAt":1671667200000,"createdAt":1643357946000,"updatedAt":1643357946000},"rental":null}')
+  return JSON.parse('{"nft":{"id":"0x959e104e1a4db6317fa58f8295f586e1a978c297-3847","tokenId":"3847","contractAddress":"0x959e104e1a4db6317fa58f8295f586e1a978c297","activeOrderId":"0x7068c5480f4f73895395e216ea32e45d81ae758c4e13f0db43fce0df3d2e3070","openRentalId":null,"owner":"0x3a572361910939dfc230bc010dadc9de7bd3af4b","name":"South  left gate","image":"https://api.decentraland.org/v2/estates/3847/map.png","url":"/contracts/0x959e104e1a4db6317fa58f8295f586e1a978c297/tokens/3847","data":{"estate":{"description":"South  left gate!","size":13,"parcels":[{"x":-2,"y":-150},{"x":-2,"y":-144},{"x":-2,"y":-143},{"x":-2,"y":-142},{"x":-1,"y":-150},{"x":-1,"y":-149},{"x":-1,"y":-148},{"x":-1,"y":-147},{"x":-1,"y":-146},{"x":-1,"y":-145},{"x":-1,"y":-144},{"x":-1,"y":-143},{"x":-1,"y":-142}]}},"issuedId":null,"itemId":null,"category":"estate","network":"ETHEREUM","chainId":1,"createdAt":1601652467000,"updatedAt":1663477751000,"soldAt":0},"order":{"id":"0x7068c5480f4f73895395e216ea32e45d81ae758c4e13f0db43fce0df3d2e3070","marketplaceAddress":"0x8e5660b4ab70168b5a6feea0e0315cb49c8cd539","contractAddress":"0x959e104e1a4db6317fa58f8295f586e1a978c297","tokenId":"3847","owner":"0x3a572361910939dfc230bc010dadc9de7bd3af4b","buyer":null,"price":"1755001000000000000000000","status":"open","network":"ETHEREUM","chainId":1,"expiresAt":1671667200000,"createdAt":1643357946000,"updatedAt":1643357946000},"rental":null}')
 }
 
 /* -------------------------------------------------------------------------- */
