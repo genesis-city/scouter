@@ -545,7 +545,11 @@ function generatePolygonJson(polygon) {
     [A, B] = JSON.parse(edge_str);
     return [[A.x, A.y], [B.x, B.y]];
   })
-  const feature = {"type":"Feature", /*'properties': {'type': polygon.type },*/"geometry": {"type":"MultiLineString","coordinates":result}};
+  const feature = {
+    "type":"Feature",
+    "properties": {"estateId": polygon.estateId , "type": polygon.type, "name": polygon.name},
+    "geometry": {"type":"MultiLineString","coordinates":result}
+  };
   return feature;
 }
 /////////////////////  ESTATES END  /////////////////////
