@@ -547,7 +547,7 @@ function generatePolygonJson(polygon) {
   })
   const feature = {
     "type":"Feature",
-    "properties": {"estateId": polygon.estateId , "type": polygon.type, "name": polygon.name},
+    "properties": {"estateId": polygon.estateId , "type": polygon.type, "name": polygon.name, "featureType": "estate"},
     "geometry": {"type":"MultiLineString","coordinates":result}
   };
   return feature;
