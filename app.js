@@ -397,6 +397,13 @@ async function getEstates() {
       });
       return true;
     })
+    // parsePolygonBorders(allPolygons);
+    console.log('ALL POLYGONS:');
+    console.log(allPolygons[3]);
+    console.log('EDGES:');
+    allPolygons[3].border.forEach((item)=> console.log(item.edge));
+    console.log('CENTERS:');
+    allPolygons[3].border.forEach((item)=> console.log(item.center));
 
     // let mocked = mockEstate()
     // estates.push(drawEstate(mocked.nft.data.estate.parcels))
@@ -422,6 +429,15 @@ function addAll(set, iter) {
   iter.map(JSON.stringify).forEach(set.add.bind(set));
 }
 
+function addAllEdges(set, iter, center) {
+  const XMaxYMax = getXMaxYMax(iter);
+  iter.map((edge)=> { 
+    const edgeType = getEdgeType(edge, XMaxYMax);
+
+    return {edge: JSON.stringify(edge), center: center, edgeType: edgeType}
+  }).forEach(set.add.bind(set));
+}
+
 function remove(list, elem) {
   list.splice(list.indexOf(elem), 1);
 }
@@ -430,7 +446,15 @@ function drawEstate(estateId, tiles) {
   console.log("Drawing estate:", estateId, tiles.length);
   let queue = tiles.map(tile => {
     const center = {x: tile.x, y: tile.y}
-    return {center: center, points: centerToVertices(center), edges: centerToEdges(center)}
+    const points = centerToVertices(center);
+    const edges = centerToEdges(center);
+    const XMaxYMax = getXMaxYMax(edges);
+    const edgesData = new Set();
+    edges.forEach(edge => {
+      const edgeType = getEdgeType(edge, XMaxYMax);
+      edgesData.add({edge: edge, center: center, type: edgeType});
+    })
+    return {center: center, points: points, edges: edges, edgesData: edgesData}
   })
 
   const first = queue[0];
@@ -441,7 +465,7 @@ function drawEstate(estateId, tiles) {
   const vertices = new Set();
   addAll(vertices, first.points);
   const border = new Set();
-  addAll(border, first.edges);
+  addAllEdges(border, first.edges, first.center);
   // calculate all vertices
   while (queue.length > 0) {
     // get an adjacent center 
@@ -454,17 +478,18 @@ function drawEstate(estateId, tiles) {
     centers.add(adjacent.center);
 
     // add new edges to the set of border edges
-    adjacent.edges.every(([A, B]) => {
+    adjacent.edgesData.forEach((edge) => {
+      const [A, B] = edge.edge
       // remove existing edge if present
       const AB = JSON.stringify([A,B]);
       const BA = JSON.stringify([B,A]);
-      if (border.has(AB) || border.has(BA)) {
-        border.delete(AB);
-        border.delete(BA);
+      if (setHasBorder(border, AB) || setHasBorder(border, BA)) {
+        setDeleteBorder(border, AB);
+        setDeleteBorder(border, BA);
       } 
       // otherwise, add it!
       else {
-        border.add(AB);
+        border.add({edge: AB, center: adjacent.center, edgeType: edge.type});
       }
       return true;
     });
@@ -512,6 +537,67 @@ function drawEstate(estateId, tiles) {
   return [polygon];
 }
 
+function setHasBorder(set, border) {
+  let borderExists = false;
+  set.forEach(item => item.edge === border && (borderExists = true))
+  return borderExists;
+}
+
+function setDeleteBorder(set, border) {
+  set.forEach(item => item.edge === border && set.delete(item));
+}
+
+function parsePolygonBorders(allPolygons) {
+  allPolygons.forEach(polygon => {
+    polygon.border.forEach(item => {
+      item.edge = JSON.parse(item.edge);
+    })
+  });
+}
+
+function edgeIsVertical(edge) {
+  if (edge[0].x === edge[1].x) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+function getXMaxYMax(edges) {
+  const xValues = [];
+  const yValues = [];
+  edges.forEach(edge => {
+    edge.forEach(coord => {
+      xValues.push(coord.x);
+      yValues.push(coord.y);
+    });
+  });
+  const xMax = Math.max(...xValues);
+  const yMax = Math.max(...yValues);
+  return {xMax: xMax, yMax: yMax};
+}
+
+function getEdgeType(edge, XMaxYMax) {
+  let edgeType;
+  const xMax = XMaxYMax.xMax
+  const yMax = XMaxYMax.yMax
+  const isVertical = edgeIsVertical(edge);
+  if (isVertical) {
+    if (edge[0].x === xMax) {
+      edgeType = 'right'
+    } else {
+      edgeType = 'left'
+    }
+  } else {
+    if (edge[0].y === yMax) {
+      edgeType = 'top'
+    } else {
+      edgeType = 'bottom'
+    }
+  }
+  return edgeType;
+}
+
 function centerToVertices(center /* {"x":0, "y":0} */) {
   let x = center.x + mapSize
   let y = center.y + mapSize
@@ -541,7 +627,9 @@ function generateEstatesJSON(polygons) {
 }
 
 function generatePolygonJson(polygon) {
-  var result = Array.from(polygon.border).map((edge_str) => {
+  let borderArray = [];
+  polygon.border.forEach(item => borderArray.push(item.edge));
+  var result = borderArray.map((edge_str) => {
     [A, B] = JSON.parse(edge_str);
     return [[A.x, A.y], [B.x, B.y]];
   })
