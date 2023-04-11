@@ -397,14 +397,15 @@ async function getEstates() {
       });
       return true;
     })
-    // parsePolygonBorders(allPolygons);
-    console.log('ALL POLYGONS:');
-    console.log(allPolygons[3]);
+    parsePolygonBorders(allPolygons);
+    offsetBordersInwards(allPolygons);
+    console.log(`Estate with id = ${allPolygons[1].estateId} :`);
+    console.log(allPolygons[1]);
     console.log('EDGES:');
-    allPolygons[3].border.forEach((item)=> console.log(item.edge));
+    allPolygons[1].border.forEach((item)=> console.log(item.edge));
     console.log('CENTERS:');
-    allPolygons[3].border.forEach((item)=> console.log(item.center));
-
+    allPolygons[1].border.forEach((item)=> console.log(item.center));
+    stringifyPolygonBorders(allPolygons);
     // let mocked = mockEstate()
     // estates.push(drawEstate(mocked.nft.data.estate.parcels))
 
@@ -555,6 +556,14 @@ function parsePolygonBorders(allPolygons) {
   });
 }
 
+function stringifyPolygonBorders(allPolygons) {
+  allPolygons.forEach(polygon => {
+    polygon.border.forEach(item => {
+      item.edge = JSON.stringify(item.edge);
+    })
+  });
+}
+
 function edgeIsVertical(edge) {
   if (edge[0].x === edge[1].x) {
     return true;
@@ -596,6 +605,33 @@ function getEdgeType(edge, XMaxYMax) {
     }
   }
   return edgeType;
+}
+
+function offsetBordersInwards(allPolygons) {
+  allPolygons.forEach(polygon => {
+    polygon.border.forEach(edge => {
+      const edgeStart = edge.edge[0];
+      const edgeEnd = edge.edge[1];
+      switch (edge.edgeType) {
+        case 'top': 
+          edgeStart.y --;
+          edgeEnd.y --;
+          break;
+        case 'right': 
+          edgeStart.x --;
+          edgeEnd.x --;
+          break;
+        case 'bottom': 
+          edgeStart.y ++;
+          edgeEnd.y ++;
+          break;
+        case 'left': 
+          edgeStart.x ++;
+          edgeEnd.x ++;
+          break;
+      }
+    })
+  })
 }
 
 function centerToVertices(center /* {"x":0, "y":0} */) {
