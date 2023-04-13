@@ -393,18 +393,24 @@ async function getEstates() {
         polygon.estateId = estateId;
         polygon.type = tiles[0].type;
         polygon.name = tiles[0].name;
+        addCrossPointCenter(polygon);
         allPolygons.push(polygon);
       });
       return true;
     })
     parsePolygonBorders(allPolygons);
-    offsetBordersInwards(allPolygons);
-    console.log(`Estate with id = ${allPolygons[1].estateId} :`);
-    console.log(allPolygons[1]);
-    console.log('EDGES:');
-    allPolygons[1].border.forEach((item)=> console.log(item.edge));
-    console.log('CENTERS:');
-    allPolygons[1].border.forEach((item)=> console.log(item.center));
+    offsetEstatesPerimeter(allPolygons);
+
+    // console.log(`Estate with id = ${allPolygons[1].estateId} :`);
+    // console.log(allPolygons[1]);
+    // console.log('EDGES:');
+    // allPolygons[1].border.forEach((item)=> console.log(item.edge));
+    // console.log('CENTERS:');
+    // allPolygons[1].border.forEach((item)=> console.log(item.center));
+    // console.log('MAX VALUES:');
+    // allPolygons[1].border.forEach((item)=> console.log(item.maxValues));
+    // console.log('CROSS POINTS:');
+    // allPolygons[1].border.forEach((item)=> console.log(item.crossEdgePoints));
     stringifyPolygonBorders(allPolygons);
     // let mocked = mockEstate()
     // estates.push(drawEstate(mocked.nft.data.estate.parcels))
@@ -431,11 +437,17 @@ function addAll(set, iter) {
 }
 
 function addAllEdges(set, iter, center) {
-  const XMaxYMax = getXMaxYMax(iter);
+  const parcelXMaxYMax = getParcelXMaxYMax(iter);
   iter.map((edge)=> { 
-    const edgeType = getEdgeType(edge, XMaxYMax);
-
-    return {edge: JSON.stringify(edge), center: center, edgeType: edgeType}
+    const edgeType = getEdgeType(edge, parcelXMaxYMax);
+    const edgeXMaxYMax = getEdgeXMaxYMax(edge);
+    return {
+      edge: JSON.stringify(edge),
+      center: center,
+      edgeType: edgeType,
+      maxValues: {x: edgeXMaxYMax.x, y: edgeXMaxYMax.y},
+      crossEdgePoints: [],
+    }
   }).forEach(set.add.bind(set));
 }
 
@@ -449,11 +461,12 @@ function drawEstate(estateId, tiles) {
     const center = {x: tile.x, y: tile.y}
     const points = centerToVertices(center);
     const edges = centerToEdges(center);
-    const XMaxYMax = getXMaxYMax(edges);
+    const parcelXMaxYMax = getParcelXMaxYMax(edges);
     const edgesData = new Set();
     edges.forEach(edge => {
-      const edgeType = getEdgeType(edge, XMaxYMax);
-      edgesData.add({edge: edge, center: center, type: edgeType});
+      const edgeType = getEdgeType(edge, parcelXMaxYMax);
+      const edgeXMaxYMax = getEdgeXMaxYMax(edge);
+      edgesData.add({edge: edge, center: center, type: edgeType, maxValues: {x: edgeXMaxYMax.x, y: edgeXMaxYMax.y}});
     })
     return {center: center, points: points, edges: edges, edgesData: edgesData}
   })
@@ -490,7 +503,7 @@ function drawEstate(estateId, tiles) {
       } 
       // otherwise, add it!
       else {
-        border.add({edge: AB, center: adjacent.center, edgeType: edge.type});
+        border.add({edge: AB, center: adjacent.center, edgeType: edge.type, maxValues: edge.maxValues, crossEdgePoints: [],});
       }
       return true;
     });
@@ -572,7 +585,7 @@ function edgeIsVertical(edge) {
   }
 }
 
-function getXMaxYMax(edges) {
+function getParcelXMaxYMax(edges) {
   const xValues = [];
   const yValues = [];
   edges.forEach(edge => {
@@ -586,10 +599,20 @@ function getXMaxYMax(edges) {
   return {xMax: xMax, yMax: yMax};
 }
 
-function getEdgeType(edge, XMaxYMax) {
+function getEdgeXMaxYMax(edge) {
+  let xMax = 0;
+  let yMax = 0;
+  edge.forEach(point => {
+    point.x > xMax && (xMax = point.x);
+    point.y > yMax && (yMax = point.y);
+  });
+  return {x: xMax, y: yMax};
+}
+
+function getEdgeType(edge, parcelXMaxYMax) {
   let edgeType;
-  const xMax = XMaxYMax.xMax
-  const yMax = XMaxYMax.yMax
+  const xMax = parcelXMaxYMax.xMax
+  const yMax = parcelXMaxYMax.yMax
   const isVertical = edgeIsVertical(edge);
   if (isVertical) {
     if (edge[0].x === xMax) {
@@ -607,27 +630,233 @@ function getEdgeType(edge, XMaxYMax) {
   return edgeType;
 }
 
-function offsetBordersInwards(allPolygons) {
+// For each point of each edge segment, add center coords corresponding to intersecting edge.
+function addCrossPointCenter(polygon) {
+	const borderArray = Array.from(polygon.border);
+
+	for (let i = 0; i < borderArray.length; i++) {
+		const border = borderArray[i];
+		const edge = JSON.parse(border.edge);
+		const startPoint = edge[0];
+		const endPoint = edge[1];
+		
+		for (let j = i+1; j < borderArray.length; j++) {
+			const border2 = borderArray[j];
+			const edge2 = JSON.parse(border2.edge);
+			const startPoint2 = edge2[0];
+			const endPoint2 = edge2[1];
+
+			// Check if border2 is perpendicular to border
+			if (edgeIsVertical(edge) !== edgeIsVertical(edge2)) {
+					
+				if (arePointsEqual(startPoint, startPoint2)){
+					// crossEdgeEqualCenter = true, means that the edge center(parcel) is the same as the center of the intersecting edge.
+					border.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
+					border2.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
+				}
+				if (arePointsEqual(startPoint, endPoint2)){
+					border.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
+					border2.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
+				}
+				if (arePointsEqual(endPoint, startPoint2)){
+					border.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
+					border2.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
+				}
+				if (arePointsEqual(endPoint, endPoint2)){
+					border.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
+					border2.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
+				}
+			}
+		}
+	}
+}
+
+function arePointsEqual(point1, point2) {
+  if(point1.x === point2.x && point1.y === point2.y) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+// Offset estates perimeter inwards. Segments displacement and corners corrections.
+function offsetEstatesPerimeter(allPolygons) {
+  const offset = 1;
   allPolygons.forEach(polygon => {
     polygon.border.forEach(edge => {
       const edgeStart = edge.edge[0];
       const edgeEnd = edge.edge[1];
+      const xMax = edge.maxValues.x;
+      const yMax = edge.maxValues.y;
       switch (edge.edgeType) {
-        case 'top': 
-          edgeStart.y --;
-          edgeEnd.y --;
+        case 'top':
+          // Inward offset
+          edgeStart.y = edgeStart.y - offset;
+          edgeEnd.y = edgeEnd.y - offset;
+          // Corners corection
+          edge.crossEdgePoints.forEach((point) => {
+            // point.crossEdgeEqualCenter = true, means the intersecting edge corresponds to the same center. The edge must shrink in size on this tip.
+            // point.crossEdgeEqualCenter = false, means the intersecting edge corresponds to other center. The edge must grow in size on this tip.
+            if (point.crossEdgeEqualCenter) {
+              // Shrink tip
+              if (point.tip === 'start') {
+                if (edgeStart.x === xMax) {
+                  edgeStart.x = edgeStart.x - offset;
+                } else {
+                  edgeStart.x = edgeStart.x + offset;
+                }
+              }
+              if (point.tip === 'end') {
+                if (edgeEnd.x === xMax) {
+                  edgeEnd.x = edgeEnd.x - offset;
+                } else {
+                  edgeEnd.x = edgeEnd.x + offset;
+                }
+              }
+            } else {
+              // Grow tip
+              if (point.tip === 'start') {
+                if (edgeStart.x === xMax) {
+                  edgeStart.x = edgeStart.x + offset;
+                } else {
+                  edgeStart.x = edgeStart.x - offset;
+                }
+              }
+              if (point.tip === 'end') {
+                if (edgeEnd.x === xMax) {
+                  edgeEnd.x = edgeEnd.x + offset;
+                } else {
+                  edgeEnd.x = edgeEnd.x - offset;
+                }
+              }
+            }
+          });
           break;
-        case 'right': 
-          edgeStart.x --;
-          edgeEnd.x --;
+        case 'right':
+          // Inward offset
+          edgeStart.x = edgeStart.x - offset;
+          edgeEnd.x = edgeEnd.x - offset;
+          // Corners corection
+          edge.crossEdgePoints.forEach((point) => {
+
+            if (point.crossEdgeEqualCenter) {
+              // Shrink tip
+              if (point.tip === 'start') {
+                if (edgeStart.y === yMax) {
+                  edgeStart.y = edgeStart.y - offset;
+                } else {
+                  edgeStart.y = edgeStart.y + offset;
+                }
+              }
+              if (point.tip === 'end') {
+                if (edgeEnd.y === yMax) {
+                  edgeEnd.y = edgeEnd.y - offset;
+                } else {
+                  edgeEnd.y = edgeEnd.y + offset;
+                }
+              }
+            } else {
+              // Grow tip
+              if (point.tip === 'start') {
+                if (edgeStart.y === yMax) {
+                  edgeStart.y = edgeStart.y + offset;
+                } else {
+                  edgeStart.y = edgeStart.y - offset;
+                }
+              }
+              if (point.tip === 'end') {
+                if (edgeEnd.y === yMax) {
+                  edgeEnd.y = edgeEnd.y + offset;
+                } else {
+                  edgeEnd.y = edgeEnd.y - offset;
+                }
+              }
+            }
+          });
           break;
-        case 'bottom': 
-          edgeStart.y ++;
-          edgeEnd.y ++;
+        case 'bottom':
+          // Inward offset
+          edgeStart.y = edgeStart.y + offset;
+          edgeEnd.y = edgeEnd.y + offset;
+          // Corners corection
+          edge.crossEdgePoints.forEach((point) => {
+
+            if (point.crossEdgeEqualCenter) {
+              // Shrink tip
+              if (point.tip === 'start') {
+                if (edgeStart.x === xMax) {
+                  edgeStart.x = edgeStart.x - offset;
+                } else {
+                  edgeStart.x = edgeStart.x + offset;
+                }
+              }
+              if (point.tip === 'end') {
+                if (edgeEnd.x === xMax) {
+                  edgeEnd.x = edgeEnd.x - offset;
+                } else {
+                  edgeEnd.x = edgeEnd.x + offset;
+                }
+              }
+            } else {
+              // Grow tip
+              if (point.tip === 'start') {
+                if (edgeStart.x === xMax) {
+                  edgeStart.x = edgeStart.x + offset;
+                } else {
+                  edgeStart.x = edgeStart.x - offset;
+                }
+              }
+              if (point.tip === 'end') {
+                if (edgeEnd.x === xMax) {
+                  edgeEnd.x = edgeEnd.x + offset;
+                } else {
+                  edgeEnd.x = edgeEnd.x - offset;
+                }
+              }
+            }
+          });
           break;
-        case 'left': 
-          edgeStart.x ++;
-          edgeEnd.x ++;
+        case 'left':
+          // Inward offset
+          edgeStart.x = edgeStart.x + offset;
+          edgeEnd.x = edgeEnd.x + offset;
+          // Corners corection
+          edge.crossEdgePoints.forEach((point) => {
+
+            if (point.crossEdgeEqualCenter) {
+              // Shrink tip
+              if (point.tip === 'start') {
+                if (edgeStart.y === yMax) {
+                  edgeStart.y = edgeStart.y - offset;
+                } else {
+                  edgeStart.y = edgeStart.y + offset;
+                }
+              }
+              if (point.tip === 'end') {
+                if (edgeEnd.y === yMax) {
+                  edgeEnd.y = edgeEnd.y - offset;
+                } else {
+                  edgeEnd.y = edgeEnd.y + offset;
+                }
+              }
+            } else {
+              // Grow tip
+              if (point.tip === 'start') {
+                if (edgeStart.y === yMax) {
+                  edgeStart.y = edgeStart.y + offset;
+                } else {
+                  edgeStart.y = edgeStart.y - offset;
+                }
+              }
+              if (point.tip === 'end') {
+                if (edgeEnd.y === yMax) {
+                  edgeEnd.y = edgeEnd.y + offset;
+                } else {
+                  edgeEnd.y = edgeEnd.y - offset;
+                }
+              }
+            }
+          });
           break;
       }
     })
