@@ -360,44 +360,69 @@ async function getEstates() {
       const fdata = JSON.parse(fs.readFileSync(fname))
       response = {data: fdata};
     } else {
-      console.log('Getting all tiles from https://api.decentraland.org/v1/tiles...')
-      response = await axios.get(`https://api.decentraland.org/v1/tiles`)
+      console.log('Getting all tiles from https://api.decentraland.org/v2/tiles...')
+      response = await axios.get(`https://api.decentraland.org/v2/tiles`)
       // fs.writeFileSync(fname, JSON.stringify(response.data));
     }
     const tiles = response.data.data;
     // all tiles
     console.log(Object.entries(tiles).length, 'total tiles');
     // tiles belonging to an estate
-    tilesInEstate = Object.entries(tiles).filter(([coord, info]) => 'estate_id' in info);
+    tilesInEstate = Object.entries(tiles).filter(([coord, info]) => 'estateId' in info);
     console.log(tilesInEstate.length, 'tiles within estate')
 
     // build tiles for each estate id
     tilesForEstate = {}
     tilesInEstate.every(([_, info]) => {
-      if (!tilesForEstate[info.estate_id]) {
-        tilesForEstate[info.estate_id] = []
+      if (!tilesForEstate[info.estateId]) {
+        tilesForEstate[info.estateId] = []
       }
-      tilesForEstate[info.estate_id].push(info)
+      tilesForEstate[info.estateId].push(info)
       return true;
     })
     console.log(Object.entries(tilesForEstate).length, 'estates total containing', tilesInEstate.length, 'tiles');
     
     let allPolygons = []
     // const specific  = 7;
-    Object.entries(tilesForEstate)/*.slice(specific,specific+1)*/.every(([estate_id, tiles]) => {
-      // if (estate_id != "4274") { //1817 hardcore
+    Object.entries(tilesForEstate)/*.slice(specific,specific+1)*/.every(([estateId, tiles]) => {
+      // if (estateId != "4274") { //1817 hardcore
       //   return true;
       // }
-      const estatePolygons = drawEstate(estate_id, tiles);
+      const estatePolygons = drawEstate(estateId, tiles);
       estatePolygons.every((polygon) => {
-        polygon.estate_id = estate_id;
+        polygon.estateId = estateId;
         polygon.type = tiles[0].type;
         polygon.name = tiles[0].name;
+        addCrossPointCenter(polygon);
         allPolygons.push(polygon);
       });
       return true;
     })
-
+    parsePolygonBorders(allPolygons);
+    offsetEstatesPerimeter(allPolygons);
+    stringifyPolygonBorders(allPolygons);
+    // DEBUG
+    // console.log(`POLYGON with id = ${allPolygons[876].estateId}:`);
+    // const arr = Array.from(allPolygons[876].border);
+    // console.log(arr);
+    // arr.forEach((item, i) => {
+    //   console.log(`-------------------------`);
+    //   console.log(`----- Border ${i+1} -----`);
+    //   console.log('edge:');
+    //   console.log(item.edge);
+    //   console.log("-----");
+    //   console.log(`edgeType: ${item.edgeType}`);
+    //   console.log("-----");
+    //   console.log(`maxValues:`);
+    //   console.log(item.maxValues);
+    //   console.log("-----");
+    //   console.log('crossEdgePoints:');
+    //   item.crossEdgePoints.forEach(point => console.log(point));
+    //   console.log("-----");
+    //   console.log(`edited:`);
+    //   console.log(item.edited);
+    //   console.log(`-------------------------`);
+    // })
     // let mocked = mockEstate()
     // estates.push(drawEstate(mocked.nft.data.estate.parcels))
 
@@ -422,15 +447,39 @@ function addAll(set, iter) {
   iter.map(JSON.stringify).forEach(set.add.bind(set));
 }
 
+function addAllEdges(set, iter, center) {
+  const parcelXMaxYMax = getParcelXMaxYMax(iter);
+  iter.map((edge)=> { 
+    const edgeType = getEdgeType(edge, parcelXMaxYMax);
+    const edgeXMaxYMax = getEdgeXMaxYMax(edge);
+    return {
+      edge: JSON.stringify(edge),
+      center: center,
+      edgeType: edgeType,
+      maxValues: {x: edgeXMaxYMax.x, y: edgeXMaxYMax.y},
+      crossEdgePoints: [],
+    }
+  }).forEach(set.add.bind(set));
+}
+
 function remove(list, elem) {
   list.splice(list.indexOf(elem), 1);
 }
 
-function drawEstate(estate_id, tiles) {
-  console.log("Drawing estate:", estate_id, tiles.length);
+function drawEstate(estateId, tiles) {
+  console.log("Drawing estate:", estateId, tiles.length);
   let queue = tiles.map(tile => {
     const center = {x: tile.x, y: tile.y}
-    return {center: center, points: centerToVertices(center), edges: centerToEdges(center)}
+    const points = centerToVertices(center);
+    const edges = centerToEdges(center);
+    const parcelXMaxYMax = getParcelXMaxYMax(edges);
+    const edgesData = new Set();
+    edges.forEach(edge => {
+      const edgeType = getEdgeType(edge, parcelXMaxYMax);
+      const edgeXMaxYMax = getEdgeXMaxYMax(edge);
+      edgesData.add({edge: edge, center: center, type: edgeType, maxValues: {x: edgeXMaxYMax.x, y: edgeXMaxYMax.y}});
+    })
+    return {center: center, points: points, edges: edges, edgesData: edgesData}
   })
 
   const first = queue[0];
@@ -441,7 +490,7 @@ function drawEstate(estate_id, tiles) {
   const vertices = new Set();
   addAll(vertices, first.points);
   const border = new Set();
-  addAll(border, first.edges);
+  addAllEdges(border, first.edges, first.center);
   // calculate all vertices
   while (queue.length > 0) {
     // get an adjacent center 
@@ -454,17 +503,24 @@ function drawEstate(estate_id, tiles) {
     centers.add(adjacent.center);
 
     // add new edges to the set of border edges
-    adjacent.edges.every(([A, B]) => {
+    adjacent.edgesData.forEach((edge) => {
+      const [A, B] = edge.edge
       // remove existing edge if present
       const AB = JSON.stringify([A,B]);
       const BA = JSON.stringify([B,A]);
-      if (border.has(AB) || border.has(BA)) {
-        border.delete(AB);
-        border.delete(BA);
+      if (setHasBorder(border, AB) || setHasBorder(border, BA)) {
+        setDeleteBorder(border, AB);
+        setDeleteBorder(border, BA);
       } 
       // otherwise, add it!
       else {
-        border.add(AB);
+        border.add({
+          edge: AB,
+          center: adjacent.center,
+          edgeType: edge.type,
+          maxValues: edge.maxValues,
+          crossEdgePoints: [],
+        });
       }
       return true;
     });
@@ -512,6 +568,359 @@ function drawEstate(estate_id, tiles) {
   return [polygon];
 }
 
+function setHasBorder(set, border) {
+  let borderExists = false;
+  set.forEach(item => item.edge === border && (borderExists = true))
+  return borderExists;
+}
+
+function setDeleteBorder(set, border) {
+  set.forEach(item => item.edge === border && set.delete(item));
+}
+
+function parsePolygonBorders(allPolygons) {
+  allPolygons.forEach(polygon => {
+    polygon.border.forEach(item => {
+      item.edge = JSON.parse(item.edge);
+    })
+  });
+}
+
+function stringifyPolygonBorders(allPolygons) {
+  allPolygons.forEach(polygon => {
+    polygon.border.forEach(item => {
+      item.edge = JSON.stringify(item.edge);
+    })
+  });
+}
+
+function edgeIsVertical(edge) {
+  if (edge[0].x === edge[1].x) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+function getParcelXMaxYMax(edges) {
+  const xValues = [];
+  const yValues = [];
+  edges.forEach(edge => {
+    edge.forEach(coord => {
+      xValues.push(coord.x);
+      yValues.push(coord.y);
+    });
+  });
+  const xMax = Math.max(...xValues);
+  const yMax = Math.max(...yValues);
+  return {xMax: xMax, yMax: yMax};
+}
+
+function getEdgeXMaxYMax(edge) {
+  let xMax = 0;
+  let yMax = 0;
+  edge.forEach(point => {
+    point.x > xMax && (xMax = point.x);
+    point.y > yMax && (yMax = point.y);
+  });
+  return {x: xMax, y: yMax};
+}
+
+function getEdgeType(edge, parcelXMaxYMax) {
+  let edgeType;
+  const xMax = parcelXMaxYMax.xMax
+  const yMax = parcelXMaxYMax.yMax
+  const isVertical = edgeIsVertical(edge);
+  if (isVertical) {
+    if (edge[0].x === xMax) {
+      edgeType = 'right'
+    } else {
+      edgeType = 'left'
+    }
+  } else {
+    if (edge[0].y === yMax) {
+      edgeType = 'top'
+    } else {
+      edgeType = 'bottom'
+    }
+  }
+  return edgeType;
+}
+
+// For each point of each edge segment, add center coords corresponding to intersecting edge.
+function addCrossPointCenter(polygon) {
+	const borderArray = Array.from(polygon.border);
+
+	for (let i = 0; i < borderArray.length; i++) {
+		const border = borderArray[i];
+		const edge = JSON.parse(border.edge);
+		const startPoint = edge[0];
+		const endPoint = edge[1];
+		
+		for (let j = i+1; j < borderArray.length; j++) {
+			const border2 = borderArray[j];
+			const edge2 = JSON.parse(border2.edge);
+			const startPoint2 = edge2[0];
+			const endPoint2 = edge2[1];
+
+			// Check if border2 is perpendicular to border
+			if (edgeIsVertical(edge) !== edgeIsVertical(edge2)) {
+					
+				if (arePointsEqual(startPoint, startPoint2)){
+					// crossEdgeEqualCenter = true, means that the edge center(parcel) is the same as the center of the intersecting edge.
+          // Allow a max of one tip: start and one tip: end for each edge. If there is more that one set crossEdgeEqualCenter: true.
+          if (border.crossEdgePoints.filter(obj => obj.tip === 'start').length === 0) {
+            border.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
+          } else {
+            border.crossEdgePoints = border.crossEdgePoints.filter(obj => obj.tip !== 'start');
+            border.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: true});
+          }
+          if (border2.crossEdgePoints.filter(obj => obj.tip === 'start').length === 0) {
+            border2.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
+          } else {
+            border2.crossEdgePoints = border2.crossEdgePoints.filter(obj => obj.tip !== 'start');
+            border2.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: true});
+          }
+				}
+				if (arePointsEqual(startPoint, endPoint2)){
+          if (border.crossEdgePoints.filter(obj => obj.tip === 'start').length === 0) {
+            border.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
+          } else {
+            border.crossEdgePoints = border.crossEdgePoints.filter(obj => obj.tip !== 'start');
+            border.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: true});
+          }
+          if (border2.crossEdgePoints.filter(obj => obj.tip === 'end').length === 0) {
+            border2.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
+          } else {
+            border2.crossEdgePoints = border2.crossEdgePoints.filter(obj => obj.tip !== 'end');
+            border2.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: true});
+          }
+				}
+				if (arePointsEqual(endPoint, startPoint2)){
+          if (border.crossEdgePoints.filter(obj => obj.tip === 'end').length === 0) {
+            border.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
+          } else {
+            border.crossEdgePoints = border.crossEdgePoints.filter(obj => obj.tip !== 'end');
+            border.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: true});
+          }
+          if (border2.crossEdgePoints.filter(obj => obj.tip === 'start').length === 0) {
+            border2.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
+          } else {
+            border2.crossEdgePoints = border2.crossEdgePoints.filter(obj => obj.tip !== 'start');
+            border2.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: true});
+          }
+				}
+				if (arePointsEqual(endPoint, endPoint2)){
+          if (border.crossEdgePoints.filter(obj => obj.tip === 'end').length === 0) {
+            border.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
+          } else {
+            border.crossEdgePoints = border.crossEdgePoints.filter(obj => obj.tip !== 'end');
+            border.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: true});
+          }
+          if (border2.crossEdgePoints.filter(obj => obj.tip === 'end').length === 0) {
+            border2.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
+          } else {
+            border2.crossEdgePoints = border2.crossEdgePoints.filter(obj => obj.tip !== 'end');
+            border2.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: true});
+          }
+				}
+			}
+		}
+	}
+}
+
+function arePointsEqual(point1, point2) {
+  if(point1.x === point2.x && point1.y === point2.y) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+// Offset estates perimeter inwards. Segments displacement and corners corrections.
+function offsetEstatesPerimeter(allPolygons) {
+  const offset = 1;
+  allPolygons.forEach(polygon => {
+    polygon.border.forEach(edge => {
+      const edgeStart = edge.edge[0];
+      const edgeEnd = edge.edge[1];
+      const xMax = edge.maxValues.x;
+      const yMax = edge.maxValues.y;
+      switch (edge.edgeType) {
+        case 'top':
+          // Inward offset
+          edgeStart.y = edgeStart.y - offset;
+          edgeEnd.y = edgeEnd.y - offset;
+          // Corners corection
+          edge.crossEdgePoints.forEach((point) => {
+            // point.crossEdgeEqualCenter = true, means the intersecting edge corresponds to the same center. The edge must shrink in size on this tip.
+            // point.crossEdgeEqualCenter = false, means the intersecting edge corresponds to other center. The edge must grow in size on this tip.
+            if (point.crossEdgeEqualCenter) {
+              // Shrink tip
+              if (point.tip === 'start') {
+                if (edgeStart.x === xMax) {
+                  edgeStart.x = edgeStart.x - offset;
+                } else {
+                  edgeStart.x = edgeStart.x + offset;
+                }
+              }
+              if (point.tip === 'end') {
+                if (edgeEnd.x === xMax) {
+                  edgeEnd.x = edgeEnd.x - offset;
+                } else {
+                  edgeEnd.x = edgeEnd.x + offset;
+                }
+              }
+            } else {
+              // Grow tip
+              if (point.tip === 'start') {
+                if (edgeStart.x === xMax) {
+                  edgeStart.x = edgeStart.x + offset;
+                } else {
+                  edgeStart.x = edgeStart.x - offset;
+                }
+              }
+              if (point.tip === 'end') {
+                if (edgeEnd.x === xMax) {
+                  edgeEnd.x = edgeEnd.x + offset;
+                } else {
+                  edgeEnd.x = edgeEnd.x - offset;
+                }
+              }
+            }
+          });
+          break;
+        case 'right':
+          // Inward offset
+          edgeStart.x = edgeStart.x - offset;
+          edgeEnd.x = edgeEnd.x - offset;
+          // Corners corection
+          edge.crossEdgePoints.forEach((point) => {
+
+            if (point.crossEdgeEqualCenter) {
+              // Shrink tip
+              if (point.tip === 'start') {
+                if (edgeStart.y === yMax) {
+                  edgeStart.y = edgeStart.y - offset;
+                } else {
+                  edgeStart.y = edgeStart.y + offset;
+                }
+              }
+              if (point.tip === 'end') {
+                if (edgeEnd.y === yMax) {
+                  edgeEnd.y = edgeEnd.y - offset;
+                } else {
+                  edgeEnd.y = edgeEnd.y + offset;
+                }
+              }
+            } else {
+              // Grow tip
+              if (point.tip === 'start') {
+                if (edgeStart.y === yMax) {
+                  edgeStart.y = edgeStart.y + offset;
+                } else {
+                  edgeStart.y = edgeStart.y - offset;
+                }
+              }
+              if (point.tip === 'end') {
+                if (edgeEnd.y === yMax) {
+                  edgeEnd.y = edgeEnd.y + offset;
+                } else {
+                  edgeEnd.y = edgeEnd.y - offset;
+                }
+              }
+            }
+          });
+          break;
+        case 'bottom':
+          // Inward offset
+          edgeStart.y = edgeStart.y + offset;
+          edgeEnd.y = edgeEnd.y + offset;
+          // Corners corection
+          edge.crossEdgePoints.forEach((point) => {
+
+            if (point.crossEdgeEqualCenter) {
+              // Shrink tip
+              if (point.tip === 'start') {
+                if (edgeStart.x === xMax) {
+                  edgeStart.x = edgeStart.x - offset;
+                } else {
+                  edgeStart.x = edgeStart.x + offset;
+                }
+              }
+              if (point.tip === 'end') {
+                if (edgeEnd.x === xMax) {
+                  edgeEnd.x = edgeEnd.x - offset;
+                } else {
+                  edgeEnd.x = edgeEnd.x + offset;
+                }
+              }
+            } else {
+              // Grow tip
+              if (point.tip === 'start') {
+                if (edgeStart.x === xMax) {
+                  edgeStart.x = edgeStart.x + offset;
+                } else {
+                  edgeStart.x = edgeStart.x - offset;
+                }
+              }
+              if (point.tip === 'end') {
+                if (edgeEnd.x === xMax) {
+                  edgeEnd.x = edgeEnd.x + offset;
+                } else {
+                  edgeEnd.x = edgeEnd.x - offset;
+                }
+              }
+            }
+          });
+          break;
+        case 'left':
+          // Inward offset
+          edgeStart.x = edgeStart.x + offset;
+          edgeEnd.x = edgeEnd.x + offset;
+          // Corners corection
+          edge.crossEdgePoints.forEach((point) => {
+
+            if (point.crossEdgeEqualCenter) {
+              // Shrink tip
+              if (point.tip === 'start') {
+                if (edgeStart.y === yMax) {
+                  edgeStart.y = edgeStart.y - offset;
+                } else {
+                  edgeStart.y = edgeStart.y + offset;
+                }
+              }
+              if (point.tip === 'end') {
+                if (edgeEnd.y === yMax) {
+                  edgeEnd.y = edgeEnd.y - offset;
+                } else {
+                  edgeEnd.y = edgeEnd.y + offset;
+                }
+              }
+            } else {
+              // Grow tip
+              if (point.tip === 'start') {
+                if (edgeStart.y === yMax) {
+                  edgeStart.y = edgeStart.y + offset;
+                } else {
+                  edgeStart.y = edgeStart.y - offset;
+                }
+              }
+              if (point.tip === 'end') {
+                if (edgeEnd.y === yMax) {
+                  edgeEnd.y = edgeEnd.y + offset;
+                } else {
+                  edgeEnd.y = edgeEnd.y - offset;
+                }
+              }
+            }
+          });
+          break;
+      }
+    })
+  })
+}
+
 function centerToVertices(center /* {"x":0, "y":0} */) {
   let x = center.x + mapSize
   let y = center.y + mapSize
@@ -541,11 +950,17 @@ function generateEstatesJSON(polygons) {
 }
 
 function generatePolygonJson(polygon) {
-  var result = Array.from(polygon.border).map((edge_str) => {
+  let borderArray = [];
+  polygon.border.forEach(item => borderArray.push(item.edge));
+  var result = borderArray.map((edge_str) => {
     [A, B] = JSON.parse(edge_str);
     return [[A.x, A.y], [B.x, B.y]];
   })
-  const feature = {"type":"Feature", /*'properties': {'type': polygon.type },*/"geometry": {"type":"MultiLineString","coordinates":result}};
+  const feature = {
+    "type":"Feature",
+    "properties": {"estateId": polygon.estateId , "type": polygon.type, "name": polygon.name, "featureType": "estate"},
+    "geometry": {"type":"MultiLineString","coordinates":result}
+  };
   return feature;
 }
 /////////////////////  ESTATES END  /////////////////////
@@ -612,7 +1027,7 @@ function normalizeBorder(border_string) {
     return [{x: A.x/parcelSize, y: A.y/parcelSize}, {x: B.x/parcelSize, y: B.y/parcelSize}];
   });
 }
-function drawPolygon({vertices, centers, border, estate_id}) {
+function drawPolygon({vertices, centers, border, estateId}) {
   const normalized = normalizeVertices(vertices);
   const normCenters = normalizeCenters(centers);
   const normBorder = normalizeBorder(border);
@@ -649,12 +1064,12 @@ function drawPolygon({vertices, centers, border, estate_id}) {
   // save image
   const buffer = canvas.toBuffer('image/png');
   fs.writeFileSync('./image.png', buffer);
-  console.log('estate id=',estate_id);
+  console.log('estate id=',estateId);
 }
 
 
 function mockEstate() {
-  return JSON.parse('{"nft":{"id":"0x959e104e1a4db6317fa58f8295f586e1a978c297-3847","tokenId":"3847","contractAddress":"0x959e104e1a4db6317fa58f8295f586e1a978c297","activeOrderId":"0x7068c5480f4f73895395e216ea32e45d81ae758c4e13f0db43fce0df3d2e3070","openRentalId":null,"owner":"0x3a572361910939dfc230bc010dadc9de7bd3af4b","name":"South  left gate","image":"https://api.decentraland.org/v1/estates/3847/map.png","url":"/contracts/0x959e104e1a4db6317fa58f8295f586e1a978c297/tokens/3847","data":{"estate":{"description":"South  left gate!","size":13,"parcels":[{"x":-2,"y":-150},{"x":-2,"y":-144},{"x":-2,"y":-143},{"x":-2,"y":-142},{"x":-1,"y":-150},{"x":-1,"y":-149},{"x":-1,"y":-148},{"x":-1,"y":-147},{"x":-1,"y":-146},{"x":-1,"y":-145},{"x":-1,"y":-144},{"x":-1,"y":-143},{"x":-1,"y":-142}]}},"issuedId":null,"itemId":null,"category":"estate","network":"ETHEREUM","chainId":1,"createdAt":1601652467000,"updatedAt":1663477751000,"soldAt":0},"order":{"id":"0x7068c5480f4f73895395e216ea32e45d81ae758c4e13f0db43fce0df3d2e3070","marketplaceAddress":"0x8e5660b4ab70168b5a6feea0e0315cb49c8cd539","contractAddress":"0x959e104e1a4db6317fa58f8295f586e1a978c297","tokenId":"3847","owner":"0x3a572361910939dfc230bc010dadc9de7bd3af4b","buyer":null,"price":"1755001000000000000000000","status":"open","network":"ETHEREUM","chainId":1,"expiresAt":1671667200000,"createdAt":1643357946000,"updatedAt":1643357946000},"rental":null}')
+  return JSON.parse('{"nft":{"id":"0x959e104e1a4db6317fa58f8295f586e1a978c297-3847","tokenId":"3847","contractAddress":"0x959e104e1a4db6317fa58f8295f586e1a978c297","activeOrderId":"0x7068c5480f4f73895395e216ea32e45d81ae758c4e13f0db43fce0df3d2e3070","openRentalId":null,"owner":"0x3a572361910939dfc230bc010dadc9de7bd3af4b","name":"South  left gate","image":"https://api.decentraland.org/v2/estates/3847/map.png","url":"/contracts/0x959e104e1a4db6317fa58f8295f586e1a978c297/tokens/3847","data":{"estate":{"description":"South  left gate!","size":13,"parcels":[{"x":-2,"y":-150},{"x":-2,"y":-144},{"x":-2,"y":-143},{"x":-2,"y":-142},{"x":-1,"y":-150},{"x":-1,"y":-149},{"x":-1,"y":-148},{"x":-1,"y":-147},{"x":-1,"y":-146},{"x":-1,"y":-145},{"x":-1,"y":-144},{"x":-1,"y":-143},{"x":-1,"y":-142}]}},"issuedId":null,"itemId":null,"category":"estate","network":"ETHEREUM","chainId":1,"createdAt":1601652467000,"updatedAt":1663477751000,"soldAt":0},"order":{"id":"0x7068c5480f4f73895395e216ea32e45d81ae758c4e13f0db43fce0df3d2e3070","marketplaceAddress":"0x8e5660b4ab70168b5a6feea0e0315cb49c8cd539","contractAddress":"0x959e104e1a4db6317fa58f8295f586e1a978c297","tokenId":"3847","owner":"0x3a572361910939dfc230bc010dadc9de7bd3af4b","buyer":null,"price":"1755001000000000000000000","status":"open","network":"ETHEREUM","chainId":1,"expiresAt":1671667200000,"createdAt":1643357946000,"updatedAt":1643357946000},"rental":null}')
 }
 
 /* -------------------------------------------------------------------------- */
