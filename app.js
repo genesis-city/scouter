@@ -400,18 +400,29 @@ async function getEstates() {
     })
     parsePolygonBorders(allPolygons);
     offsetEstatesPerimeter(allPolygons);
-
-    // console.log(`Estate with id = ${allPolygons[1].estateId} :`);
-    // console.log(allPolygons[1]);
-    // console.log('EDGES:');
-    // allPolygons[1].border.forEach((item)=> console.log(item.edge));
-    // console.log('CENTERS:');
-    // allPolygons[1].border.forEach((item)=> console.log(item.center));
-    // console.log('MAX VALUES:');
-    // allPolygons[1].border.forEach((item)=> console.log(item.maxValues));
-    // console.log('CROSS POINTS:');
-    // allPolygons[1].border.forEach((item)=> console.log(item.crossEdgePoints));
     stringifyPolygonBorders(allPolygons);
+    // DEBUG
+    // console.log(`POLYGON with id = ${allPolygons[876].estateId}:`);
+    // const arr = Array.from(allPolygons[876].border);
+    // console.log(arr);
+    // arr.forEach((item, i) => {
+    //   console.log(`-------------------------`);
+    //   console.log(`----- Border ${i+1} -----`);
+    //   console.log('edge:');
+    //   console.log(item.edge);
+    //   console.log("-----");
+    //   console.log(`edgeType: ${item.edgeType}`);
+    //   console.log("-----");
+    //   console.log(`maxValues:`);
+    //   console.log(item.maxValues);
+    //   console.log("-----");
+    //   console.log('crossEdgePoints:');
+    //   item.crossEdgePoints.forEach(point => console.log(point));
+    //   console.log("-----");
+    //   console.log(`edited:`);
+    //   console.log(item.edited);
+    //   console.log(`-------------------------`);
+    // })
     // let mocked = mockEstate()
     // estates.push(drawEstate(mocked.nft.data.estate.parcels))
 
@@ -503,7 +514,13 @@ function drawEstate(estateId, tiles) {
       } 
       // otherwise, add it!
       else {
-        border.add({edge: AB, center: adjacent.center, edgeType: edge.type, maxValues: edge.maxValues, crossEdgePoints: [],});
+        border.add({
+          edge: AB,
+          center: adjacent.center,
+          edgeType: edge.type,
+          maxValues: edge.maxValues,
+          crossEdgePoints: [],
+        });
       }
       return true;
     });
@@ -651,20 +668,61 @@ function addCrossPointCenter(polygon) {
 					
 				if (arePointsEqual(startPoint, startPoint2)){
 					// crossEdgeEqualCenter = true, means that the edge center(parcel) is the same as the center of the intersecting edge.
-					border.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
-					border2.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
+          // Allow a max of one tip: start and one tip: end for each edge. If there is more that one set crossEdgeEqualCenter: true.
+          if (border.crossEdgePoints.filter(obj => obj.tip === 'start').length === 0) {
+            border.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
+          } else {
+            border.crossEdgePoints = border.crossEdgePoints.filter(obj => obj.tip !== 'start');
+            border.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: true});
+          }
+          if (border2.crossEdgePoints.filter(obj => obj.tip === 'start').length === 0) {
+            border2.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
+          } else {
+            border2.crossEdgePoints = border2.crossEdgePoints.filter(obj => obj.tip !== 'start');
+            border2.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: true});
+          }
 				}
 				if (arePointsEqual(startPoint, endPoint2)){
-					border.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
-					border2.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
+          if (border.crossEdgePoints.filter(obj => obj.tip === 'start').length === 0) {
+            border.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
+          } else {
+            border.crossEdgePoints = border.crossEdgePoints.filter(obj => obj.tip !== 'start');
+            border.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: true});
+          }
+          if (border2.crossEdgePoints.filter(obj => obj.tip === 'end').length === 0) {
+            border2.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
+          } else {
+            border2.crossEdgePoints = border2.crossEdgePoints.filter(obj => obj.tip !== 'end');
+            border2.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: true});
+          }
 				}
 				if (arePointsEqual(endPoint, startPoint2)){
-					border.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
-					border2.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
+          if (border.crossEdgePoints.filter(obj => obj.tip === 'end').length === 0) {
+            border.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
+          } else {
+            border.crossEdgePoints = border.crossEdgePoints.filter(obj => obj.tip !== 'end');
+            border.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: true});
+          }
+          if (border2.crossEdgePoints.filter(obj => obj.tip === 'start').length === 0) {
+            border2.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
+          } else {
+            border2.crossEdgePoints = border2.crossEdgePoints.filter(obj => obj.tip !== 'start');
+            border2.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: true});
+          }
 				}
 				if (arePointsEqual(endPoint, endPoint2)){
-					border.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
-					border2.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
+          if (border.crossEdgePoints.filter(obj => obj.tip === 'end').length === 0) {
+            border.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
+          } else {
+            border.crossEdgePoints = border.crossEdgePoints.filter(obj => obj.tip !== 'end');
+            border.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: true});
+          }
+          if (border2.crossEdgePoints.filter(obj => obj.tip === 'end').length === 0) {
+            border2.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
+          } else {
+            border2.crossEdgePoints = border2.crossEdgePoints.filter(obj => obj.tip !== 'end');
+            border2.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: true});
+          }
 				}
 			}
 		}
