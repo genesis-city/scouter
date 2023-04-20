@@ -382,19 +382,30 @@ async function getEstates() {
     })
     console.log(Object.entries(tilesForEstate).length, 'estates total containing', tilesInEstate.length, 'tiles');
     
+    // allPolygons includes perimeters and areas.
     let allPolygons = []
     // const specific  = 7;
     Object.entries(tilesForEstate)/*.slice(specific,specific+1)*/.every(([estateId, tiles]) => {
       // if (estateId != "4274") { //1817 hardcore
       //   return true;
       // }
-      const estatePolygons = drawEstate(estateId, tiles);
-      estatePolygons.every((polygon) => {
-        polygon.estateId = estateId;
-        polygon.type = tiles[0].type;
-        polygon.name = tiles[0].name;
-        addCrossPointCenter(polygon);
-        allPolygons.push(polygon);
+      const estatePerimeter = drawEstatePerimeter(estateId, tiles);
+      estatePerimeter.every((perimeter) => {
+        perimeter.estateId = estateId;
+        perimeter.type = tiles[0].type;
+        perimeter.name = tiles[0].name;
+        perimeter.geoType = 'perimeter';
+        addCrossPointCenter(perimeter);
+        allPolygons.push(perimeter);
+      });
+
+      const estateArea = drawEstateArea(estateId, tiles);
+      estateArea.every((area) => {
+        area.estateId = estateId;
+        area.type = tiles[0].type;
+        area.name = tiles[0].name;
+        area.geoType = 'area';
+        allPolygons.push(area);
       });
       return true;
     })
@@ -402,29 +413,10 @@ async function getEstates() {
     offsetEstatesPerimeter(allPolygons);
     stringifyPolygonBorders(allPolygons);
     // DEBUG
-    // console.log(`POLYGON with id = ${allPolygons[876].estateId}:`);
-    // const arr = Array.from(allPolygons[876].border);
-    // console.log(arr);
-    // arr.forEach((item, i) => {
-    //   console.log(`-------------------------`);
-    //   console.log(`----- Border ${i+1} -----`);
-    //   console.log('edge:');
-    //   console.log(item.edge);
-    //   console.log("-----");
-    //   console.log(`edgeType: ${item.edgeType}`);
-    //   console.log("-----");
-    //   console.log(`maxValues:`);
-    //   console.log(item.maxValues);
-    //   console.log("-----");
-    //   console.log('crossEdgePoints:');
-    //   item.crossEdgePoints.forEach(point => console.log(point));
-    //   console.log("-----");
-    //   console.log(`edited:`);
-    //   console.log(item.edited);
-    //   console.log(`-------------------------`);
-    // })
+    // console.log("allPolygons[1]:");
+    // console.log(allPolygons[1]);
     // let mocked = mockEstate()
-    // estates.push(drawEstate(mocked.nft.data.estate.parcels))
+    // estates.push(drawEstatePerimeter(mocked.nft.data.estate.parcels))
 
     console.log("estates length:", allPolygons.length)
     
@@ -466,8 +458,8 @@ function remove(list, elem) {
   list.splice(list.indexOf(elem), 1);
 }
 
-function drawEstate(estateId, tiles) {
-  console.log("Drawing estate:", estateId, tiles.length);
+function drawEstatePerimeter(estateId, tiles) {
+  console.log("Drawing estate perimeter:", estateId, tiles.length);
   let queue = tiles.map(tile => {
     const center = {x: tile.x, y: tile.y}
     const points = centerToVertices(center);
@@ -568,6 +560,17 @@ function drawEstate(estateId, tiles) {
   return [polygon];
 }
 
+function drawEstateArea(estateId, tiles) {
+  console.log("Drawing estate area:", estateId, tiles.length);
+  const multiPolygon = [];
+  tiles.forEach(tile => {
+    const center = {x: tile.x, y: tile.y}
+    const polygon = centerToTilePolygon(center);
+    multiPolygon.push({polygon: polygon, center: center})
+  });
+  return [{multiPolygon: multiPolygon}];
+}
+
 function setHasBorder(set, border) {
   let borderExists = false;
   set.forEach(item => item.edge === border && (borderExists = true))
@@ -580,7 +583,7 @@ function setDeleteBorder(set, border) {
 
 function parsePolygonBorders(allPolygons) {
   allPolygons.forEach(polygon => {
-    polygon.border.forEach(item => {
+    polygon.border?.forEach(item => {
       item.edge = JSON.parse(item.edge);
     })
   });
@@ -588,7 +591,7 @@ function parsePolygonBorders(allPolygons) {
 
 function stringifyPolygonBorders(allPolygons) {
   allPolygons.forEach(polygon => {
-    polygon.border.forEach(item => {
+    polygon.border?.forEach(item => {
       item.edge = JSON.stringify(item.edge);
     })
   });
@@ -741,7 +744,7 @@ function arePointsEqual(point1, point2) {
 function offsetEstatesPerimeter(allPolygons) {
   const offset = 1;
   allPolygons.forEach(polygon => {
-    polygon.border.forEach(edge => {
+    polygon.border?.forEach(edge => {
       const edgeStart = edge.edge[0];
       const edgeEnd = edge.edge[1];
       const xMax = edge.maxValues.x;
@@ -928,6 +931,13 @@ function centerToVertices(center /* {"x":0, "y":0} */) {
   y = y * parcelSize
   return [{"x": x,"y": y},{"x": x+parcelSize,"y": y},{"x": x+parcelSize,"y": y+parcelSize},{"x": x,"y": y+parcelSize}]
 }
+function centerToTilePolygon(center /* {"x":0, "y":0} */) {
+  let x = center.x + mapSize
+  let y = center.y + mapSize
+  x = x * parcelSize
+  y = y * parcelSize
+  return [{"x": x,"y": y},{"x": x+parcelSize,"y": y},{"x": x+parcelSize,"y": y+parcelSize},{"x": x,"y": y+parcelSize},{"x": x,"y": y}]
+}
 function centerToEdges(center) {
   vxs = centerToVertices(center);
   return [[vxs[0], vxs[1]], [vxs[1], vxs[2]], [vxs[2], vxs[3]], [vxs[3], vxs[0]]]
@@ -941,7 +951,11 @@ function vertexToCenters(vertex) {
 
 function generateEstatesJSON(polygons) {
   let polygonJSONs = polygons.map(polygon => {
-    return generatePolygonJson(polygon);
+    if (polygon.geoType === 'perimeter') {
+      return generatePerimeterJson(polygon);
+    } else if (polygon.geoType === 'area') {
+      return generateAreaJson(polygon);
+    }
   })
   
   let estatesJson = JSON.stringify({"type":"FeatureCollection", "crs": {"type": "name", "properties": {"name": "ESTATES"}}, "features":polygonJSONs}, null, 0)
@@ -949,7 +963,7 @@ function generateEstatesJSON(polygons) {
   console.log("Estates json created");
 }
 
-function generatePolygonJson(polygon) {
+function generatePerimeterJson(polygon) {
   let borderArray = [];
   polygon.border.forEach(item => borderArray.push(item.edge));
   var result = borderArray.map((edge_str) => {
@@ -958,8 +972,29 @@ function generatePolygonJson(polygon) {
   })
   const feature = {
     "type":"Feature",
-    "properties": {"estateId": polygon.estateId , "type": polygon.type, "name": polygon.name, "featureType": "estate"},
+    "properties": {"estateId": polygon.estateId , "type": polygon.type, "name": polygon.name, "featureType": "estatePerimeter"},
     "geometry": {"type":"MultiLineString","coordinates":result}
+  };
+  return feature;
+}
+
+function generateAreaJson(polygon) {
+  const wrapersArray = [];
+  
+  polygon.multiPolygon.forEach(tilePolygon => {
+    const containerWraper = [];
+    const pointsContainer = [];
+    tilePolygon.polygon.forEach (point => {
+      pointsContainer.push([point.x, point.y]);
+    });
+    containerWraper.push(pointsContainer);
+    wrapersArray.push(containerWraper);
+  });
+  
+  const feature = {
+    "type":"Feature",
+    "properties": {"estateId": polygon.estateId , "type": polygon.type, "name": polygon.name, "featureType": "estateArea"},
+    "geometry": {"type":"MultiPolygon","coordinates":wrapersArray}
   };
   return feature;
 }
