@@ -668,10 +668,9 @@ function addCrossPointCenter(polygon) {
 
 			// Check if border2 is perpendicular to border
 			if (edgeIsVertical(edge) !== edgeIsVertical(edge2)) {
-					
+			  // crossEdgeEqualCenter = true, means that the edge center(parcel) is the same as the center of the intersecting edge.
+        // Allow a max of one tip: start and one tip: end for each edge. If there is more that one set crossEdgeEqualCenter: true.
 				if (arePointsEqual(startPoint, startPoint2)){
-					// crossEdgeEqualCenter = true, means that the edge center(parcel) is the same as the center of the intersecting edge.
-          // Allow a max of one tip: start and one tip: end for each edge. If there is more that one set crossEdgeEqualCenter: true.
           setCrossEdgeEqualCenter(border, border2, 'start');
           setCrossEdgeEqualCenter(border2, border, 'start');
 				}
