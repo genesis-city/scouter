@@ -668,68 +668,37 @@ function addCrossPointCenter(polygon) {
 
 			// Check if border2 is perpendicular to border
 			if (edgeIsVertical(edge) !== edgeIsVertical(edge2)) {
-					
+			  // crossEdgeEqualCenter = true, means that the edge center(parcel) is the same as the center of the intersecting edge.
+        // Allow a max of one tip: start and one tip: end for each edge. If there is more that one set crossEdgeEqualCenter: true.
 				if (arePointsEqual(startPoint, startPoint2)){
-					// crossEdgeEqualCenter = true, means that the edge center(parcel) is the same as the center of the intersecting edge.
-          // Allow a max of one tip: start and one tip: end for each edge. If there is more that one set crossEdgeEqualCenter: true.
-          if (border.crossEdgePoints.filter(obj => obj.tip === 'start').length === 0) {
-            border.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
-          } else {
-            border.crossEdgePoints = border.crossEdgePoints.filter(obj => obj.tip !== 'start');
-            border.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: true});
-          }
-          if (border2.crossEdgePoints.filter(obj => obj.tip === 'start').length === 0) {
-            border2.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
-          } else {
-            border2.crossEdgePoints = border2.crossEdgePoints.filter(obj => obj.tip !== 'start');
-            border2.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: true});
-          }
+          setCrossEdgeEqualCenter(border, border2, 'start');
+          setCrossEdgeEqualCenter(border2, border, 'start');
 				}
 				if (arePointsEqual(startPoint, endPoint2)){
-          if (border.crossEdgePoints.filter(obj => obj.tip === 'start').length === 0) {
-            border.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
-          } else {
-            border.crossEdgePoints = border.crossEdgePoints.filter(obj => obj.tip !== 'start');
-            border.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: true});
-          }
-          if (border2.crossEdgePoints.filter(obj => obj.tip === 'end').length === 0) {
-            border2.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
-          } else {
-            border2.crossEdgePoints = border2.crossEdgePoints.filter(obj => obj.tip !== 'end');
-            border2.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: true});
-          }
+          setCrossEdgeEqualCenter(border, border2, 'start');
+          setCrossEdgeEqualCenter(border2, border, 'end');
 				}
 				if (arePointsEqual(endPoint, startPoint2)){
-          if (border.crossEdgePoints.filter(obj => obj.tip === 'end').length === 0) {
-            border.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
-          } else {
-            border.crossEdgePoints = border.crossEdgePoints.filter(obj => obj.tip !== 'end');
-            border.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: true});
-          }
-          if (border2.crossEdgePoints.filter(obj => obj.tip === 'start').length === 0) {
-            border2.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
-          } else {
-            border2.crossEdgePoints = border2.crossEdgePoints.filter(obj => obj.tip !== 'start');
-            border2.crossEdgePoints.push({tip: 'start', crossEdgeEqualCenter: true});
-          }
+          setCrossEdgeEqualCenter(border, border2, 'end');
+          setCrossEdgeEqualCenter(border2, border, 'start');
 				}
 				if (arePointsEqual(endPoint, endPoint2)){
-          if (border.crossEdgePoints.filter(obj => obj.tip === 'end').length === 0) {
-            border.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
-          } else {
-            border.crossEdgePoints = border.crossEdgePoints.filter(obj => obj.tip !== 'end');
-            border.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: true});
-          }
-          if (border2.crossEdgePoints.filter(obj => obj.tip === 'end').length === 0) {
-            border2.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: arePointsEqual(border.center, border2.center)});
-          } else {
-            border2.crossEdgePoints = border2.crossEdgePoints.filter(obj => obj.tip !== 'end');
-            border2.crossEdgePoints.push({tip: 'end', crossEdgeEqualCenter: true});
-          }
+          setCrossEdgeEqualCenter(border, border2, 'end');
+          setCrossEdgeEqualCenter(border2, border, 'end');
 				}
 			}
 		}
 	}
+}
+
+// Set Boolean value of crossEdgeEqualCenter for crossing edge points
+function setCrossEdgeEqualCenter(firstBorder, secondBorder, tip) {
+  if (firstBorder.crossEdgePoints.filter(obj => obj.tip === tip).length === 0) {
+    firstBorder.crossEdgePoints.push({tip: tip, crossEdgeEqualCenter: arePointsEqual(firstBorder.center, secondBorder.center)});
+  } else {
+    firstBorder.crossEdgePoints = firstBorder.crossEdgePoints.filter(obj => obj.tip !== tip);
+    firstBorder.crossEdgePoints.push({tip: tip, crossEdgeEqualCenter: true});
+  }
 }
 
 function arePointsEqual(point1, point2) {
