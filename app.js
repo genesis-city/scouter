@@ -13,6 +13,15 @@ var logger = fs.createWriteStream('./output/logs.txt', {flags: 'a' /*append*/})
 const { Command } = require('commander');
 const program = new Command();
 var resumeAt = null
+/* ----------------------- Initialize Cloud Firestore ----------------------- */
+const { initializeApp, applicationDefault, cert } = require('firebase-admin/app');
+const { getFirestore, Timestamp, FieldValue, Filter } = require('firebase-admin/firestore');
+const serviceAccount = require('./genesis-city-40d7e-dee494012657.json');
+const { asyncify } = require('async');
+initializeApp({
+    credential: cert(serviceAccount)
+});
+const db = getFirestore();
 /* --------------------------- Points of Interest Start--------------------------- */
 const coordsEndpoint = 'https://peer.decentraland.org/lambdas/contracts/pois';
 const metaDataBaseURL = 'https://places.decentraland.org/api/places?';
