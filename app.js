@@ -369,6 +369,23 @@ function generateGeoJson(coords, geoJsonFile) {
   geoJsonFile.end()
 }
 
+function generateSaleRentJson(coords, saleRentJsonFile) {
+  let polygonsJson = []
+  Array.from(coords).forEach(el => {
+    let intCoords = el.coords.split(',')
+    var x = parseInt(intCoords[0]) + mapSize
+    var y = parseInt(intCoords[1]) + mapSize
+    x = x * parcelSize
+    y = y * parcelSize
+    polygonsJson.push({"type":"Feature","geometry": {"type":"Polygon","coordinates":[[[x,y],[x,y+parcelSize],[x+parcelSize,y+parcelSize],[x+parcelSize,y],[x,y]]]}})
+  })
+
+  let saleRentJson = JSON.stringify({"type":"FeatureCollection","features":polygonsJson})
+
+  saleRentJsonFile.write(saleRentJson);
+  saleRentJsonFile.end();
+}
+
 // Logger functions
 function logMessage(message) {
   let fullMessage = `[${getCurrentDateAndTime()}]: ${message}`
