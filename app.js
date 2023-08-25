@@ -249,6 +249,8 @@ async function roundCoordsForUnity() {
   logMessage(`Dirty parcels found: ${dirtyParcels.length}`)
   let rawCoords = dirtyParcels.slice()
   generateGeoJson(rawCoords, geoJsonFile)
+  const landsForSaleRent = await getParcelsForSaleRent();
+  generateSaleRentJson(landsForSaleRent, saleRentJsonFile);
   var groupedRawCoords = []
 
   while (rawCoords.length > 0) {
@@ -446,7 +448,7 @@ async function getParcelsForSaleRent() {
 
 function generateSaleRentJson(coords, saleRentJsonFile) {
   let polygonsJson = []
-  Array.from(coords).forEach(el => {
+  coords.forEach(el => {
     let intCoords = el.coords.split(',')
     var x = parseInt(intCoords[0]) + mapSize
     var y = parseInt(intCoords[1]) + mapSize
