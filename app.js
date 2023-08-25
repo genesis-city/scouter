@@ -241,6 +241,7 @@ async function roundCoordsForUnity() {
   var coordsStream = fs.createWriteStream('./output/coords.txt')
   var coordsRawStream = fs.createWriteStream('./output/raw_coords.txt')
   var geoJsonFile = fs.createWriteStream('./output/geo.json')
+  var saleRentJsonFile = fs.createWriteStream('./output/saleRent.json')
   logMessage("Rounding coords for unity")
   await connectToDB()
   let dirtyParcels = await getDirtyParcels()
@@ -369,6 +370,10 @@ function generateGeoJson(coords, geoJsonFile) {
   geoJsonFile.end()
 }
 
+/* -------------------------------------------------------------------------- */
+/*                  Process Items for Sale/Rent data - START                  */
+/* -------------------------------------------------------------------------- */
+
 function generateSaleRentJson(coords, saleRentJsonFile) {
   let polygonsJson = []
   Array.from(coords).forEach(el => {
@@ -385,6 +390,10 @@ function generateSaleRentJson(coords, saleRentJsonFile) {
   saleRentJsonFile.write(saleRentJson);
   saleRentJsonFile.end();
 }
+
+/* -------------------------------------------------------------------------- */
+/*                   Process Items for Sale/Rent data - END                   */
+/* -------------------------------------------------------------------------- */
 
 // Logger functions
 function logMessage(message) {
