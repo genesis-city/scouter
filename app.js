@@ -374,6 +374,76 @@ function generateGeoJson(coords, geoJsonFile) {
 /*                  Process Items for Sale/Rent data - START                  */
 /* -------------------------------------------------------------------------- */
 
+async function fetchData(params) {
+  const BASE_URL = 'https://nft-api.decentraland.org/v1/nfts';
+  try {
+      const response = await fetch(`${BASE_URL}?${params}`);
+      const data = await response.json();
+      return data.data;
+  } catch (err) {
+      console.log(err);
+  }
+}
+
+function processParcel(item, parcelsForSaleRent) {
+  const parcel = item.nft.data.parcel;
+  const parcelData = {
+      coords: `${parcel.x},${parcel.y}`,
+      data: {
+          category: item.nft.category,
+          name: item.nft.name,
+          salePrice: item.order?.price ? item.order.price / 1e18 : null,
+          rentPricePerDay: item.rental?.periods ? item.rental.periods[0].pricePerDay / 1e18 : null,
+      },
+  }
+  parcelsForSaleRent.push(parcelData);
+}
+
+function processEstate(item, parcelsForSaleRent) {
+  const estate = item.nft.data.estate;
+  const parcelsInEstate = estate.parcels.map(parcel => `${parcel.x},${parcel.y}`);
+  estate.parcels.forEach(parcel => {
+      const parcelData = {
+          coords: `${parcel.x},${parcel.y}`,
+          data: {
+              category: item.nft.category,
+              name: item.nft.name,
+              size: estate.size,
+              parcels: parcelsInEstate,
+              salePrice: item.order?.price ? item.order.price / 1e18 : null,
+              rentPricePerDay: item.rental?.periods ? item.rental.periods[0].pricePerDay / 1e18 : null,
+          },
+      }
+      parcelsForSaleRent.push(parcelData);
+  });
+}
+
+async function getParcelsForSaleRent() {
+  const parcelsForSaleRent = [];
+
+  const forSale = await fetchData('first=1000&skip=0&sortBy=newest&isOnSale=true&isLand=true');
+  const forRent = await fetchData('first=1000&skip=0&sortBy=newest&isOnRent=true&isLand=true');
+  let itemCount = 0;
+
+  logMessage('Processing Items for Sale . . .');
+  forSale.forEach(item => {
+      itemCount++
+      if (item.nft.data.parcel) processParcel(item, parcelsForSaleRent);
+      if (item.nft.data.estate) processEstate(item, parcelsForSaleRent);
+  });
+
+  logMessage('Processing Items for Rent . . .');
+  forRent.forEach(item => {
+      if (!item.order) {
+          itemCount++
+          if (item.nft.data.parcel) processParcel(item, parcelsForSaleRent);
+          if (item.nft.data.estate) processEstate(item, parcelsForSaleRent);
+      }
+  });
+  console.log(`There are ${itemCount} items for Sale/Rent, making a total of ${parcelsForSaleRent.length} parcels.`);
+  return parcelsForSaleRent;
+}
+
 function generateSaleRentJson(coords, saleRentJsonFile) {
   let polygonsJson = []
   Array.from(coords).forEach(el => {
