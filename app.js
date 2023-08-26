@@ -442,7 +442,7 @@ async function getParcelsForSaleRent() {
           if (item.nft.data.estate) processEstate(item, parcelsForSaleRent);
       }
   });
-  logMessage(`There are ${itemCount} items for Sale/Rent, making a total of ${parcelsForSaleRent.length} parcels.`);
+  logMessage(`There are ${itemCount} items for Sale/Rent, making a total of ${parcelsForSaleRent.length} parcels in Decentraland's marketplace.`);
   return parcelsForSaleRent;
 }
 
@@ -472,7 +472,6 @@ async function getParcelsForRent() {
   do {
     const forRentRes = await fetchData(`first=100&skip=${round*resItemLimit}&sortBy=newest&isOnRent=true&isLand=true`);
     responses.push(forRentRes);
-    console.log(`ROUND: ${round}`);
     round++;
   } while (responses[round-1]?.length === resItemLimit);
 
