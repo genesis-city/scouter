@@ -424,7 +424,7 @@ async function getParcelsForSaleRent() {
   const parcelsForSaleRent = [];
 
   const forSale = await fetchData('first=1000&skip=0&sortBy=newest&isOnSale=true&isLand=true');
-  const forRent = await fetchData('first=1000&skip=0&sortBy=newest&isOnRent=true&isLand=true');
+  const forRent = await getParcelsForRent();
   let itemCount = 0;
 
   logMessage('Processing Items for Sale . . .');
@@ -442,7 +442,7 @@ async function getParcelsForSaleRent() {
           if (item.nft.data.estate) processEstate(item, parcelsForSaleRent);
       }
   });
-  console.log(`There are ${itemCount} items for Sale/Rent, making a total of ${parcelsForSaleRent.length} parcels.`);
+  logMessage(`There are ${itemCount} items for Sale/Rent, making a total of ${parcelsForSaleRent.length} parcels.`);
   return parcelsForSaleRent;
 }
 
@@ -461,6 +461,23 @@ function generateSaleRentJson(coords, saleRentJsonFile) {
 
   saleRentJsonFile.write(saleRentJson);
   saleRentJsonFile.end();
+}
+
+// Paginate request to overcome item response limit
+async function getParcelsForRent() {
+  const responses = [];
+  const resItemLimit = 100;
+  let round = 0;
+
+  do {
+    const forRentRes = await fetchData(`first=100&skip=${round*resItemLimit}&sortBy=newest&isOnRent=true&isLand=true`);
+    responses.push(forRentRes);
+    console.log(`ROUND: ${round}`);
+    round++;
+  } while (responses[round-1]?.length === resItemLimit);
+
+  const parcelsForRent = [].concat(...responses);
+  return parcelsForRent;
 }
 
 /* -------------------------------------------------------------------------- */
