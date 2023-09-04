@@ -241,6 +241,7 @@ async function roundCoordsForUnity() {
   var coordsStream = fs.createWriteStream('./output/coords.txt')
   var coordsRawStream = fs.createWriteStream('./output/raw_coords.txt')
   var geoJsonFile = fs.createWriteStream('./output/geo.json')
+  var saleRentJsonFile = fs.createWriteStream('./output/saleRent.json')
   logMessage("Rounding coords for unity")
   await connectToDB()
   let dirtyParcels = await getDirtyParcels()
@@ -248,6 +249,8 @@ async function roundCoordsForUnity() {
   logMessage(`Dirty parcels found: ${dirtyParcels.length}`)
   let rawCoords = dirtyParcels.slice()
   generateGeoJson(rawCoords, geoJsonFile)
+  const landsForSaleRent = await getParcelsForSaleRent();
+  generateSaleRentJson(landsForSaleRent, saleRentJsonFile);
   var groupedRawCoords = []
 
   while (rawCoords.length > 0) {
@@ -368,6 +371,128 @@ function generateGeoJson(coords, geoJsonFile) {
   geoJsonFile.write(geoJson)
   geoJsonFile.end()
 }
+
+/* -------------------------------------------------------------------------- */
+/*                  Process Items for Sale/Rent data - START                  */
+/* -------------------------------------------------------------------------- */
+
+async function fetchData(params) {
+  const BASE_URL = 'https://nft-api.decentraland.org/v1/nfts';
+  try {
+      const response = await fetch(`${BASE_URL}?${params}`);
+      const data = await response.json();
+      return data.data;
+  } catch (err) {
+      console.log(err);
+  }
+}
+
+function processParcel(item, parcelsForSaleRent) {
+  const parcel = item.nft.data.parcel;
+  const parcelData = {
+      coords: `${parcel.x},${parcel.y}`,
+      data: {
+          category: item.nft.category,
+          name: item.nft.name,
+          salePrice: item.order?.price ? item.order.price / 1e18 : null,
+          rentPrice: item.rental?.periods ? item.rental.periods[0].pricePerDay / 1e18 : null,
+          featureType: 'saleRent',
+          contractAddress: item.nft.contractAddress,
+          tokenId: item.nft.tokenId,
+      },
+  }
+  parcelsForSaleRent.push(parcelData);
+}
+
+function processEstate(item, parcelsForSaleRent) {
+  const estate = item.nft.data.estate;
+  const parcelsInEstate = estate.parcels.map(parcel => `${parcel.x},${parcel.y}`);
+  estate.parcels.forEach(parcel => {
+      const parcelData = {
+          coords: `${parcel.x},${parcel.y}`,
+          data: {
+              category: item.nft.category,
+              name: item.nft.name,
+              size: estate.size,
+              parcels: parcelsInEstate,
+              salePrice: item.order?.price ? item.order.price / 1e18 : null,
+              rentPrice: item.rental?.periods ? item.rental.periods[0].pricePerDay / 1e18 : null,
+              featureType: 'saleRent',
+              contractAddress: item.nft.contractAddress,
+              tokenId: item.nft.tokenId,
+          },
+      }
+      parcelsForSaleRent.push(parcelData);
+  });
+}
+
+async function getParcelsForSaleRent() {
+  const parcelsForSaleRent = [];
+
+  const forSale = await fetchData('first=1000&skip=0&sortBy=newest&isOnSale=true&isLand=true');
+  const forRent = await getParcelsForRent();
+  let itemCount = 0;
+
+  logMessage('Processing Items for Sale . . .');
+  forSale.forEach(item => {
+      itemCount++
+      if (item.nft.data.parcel) processParcel(item, parcelsForSaleRent);
+      if (item.nft.data.estate) processEstate(item, parcelsForSaleRent);
+  });
+
+  logMessage('Processing Items for Rent . . .');
+  forRent.forEach(item => {
+      if (!item.order) {
+          itemCount++
+          if (item.nft.data.parcel) processParcel(item, parcelsForSaleRent);
+          if (item.nft.data.estate) processEstate(item, parcelsForSaleRent);
+      }
+  });
+  logMessage(`There are ${itemCount} items for Sale/Rent, making a total of ${parcelsForSaleRent.length} parcels in Decentraland's marketplace.`);
+  return parcelsForSaleRent;
+}
+
+function generateSaleRentJson(itemsForSaleRent, saleRentJsonFile) {
+  let polygonsJson = []
+  itemsForSaleRent.forEach(item => {
+    let intCoords = item.coords.split(',')
+    var x = parseInt(intCoords[0]) + mapSize
+    var y = parseInt(intCoords[1]) + mapSize
+    x = x * parcelSize
+    y = y * parcelSize
+    const feature = {
+      "type":"Feature",
+      "geometry": {"type":"Polygon","coordinates":[[[x,y],[x,y+parcelSize],[x+parcelSize,y+parcelSize],[x+parcelSize,y],[x,y]]]},
+      "properties": item.data,
+    }
+    polygonsJson.push(feature)
+  })
+
+  let saleRentJson = JSON.stringify({"type":"FeatureCollection","features":polygonsJson})
+
+  saleRentJsonFile.write(saleRentJson);
+  saleRentJsonFile.end();
+}
+
+// Paginate request to overcome item response limit
+async function getParcelsForRent() {
+  const responses = [];
+  const resItemLimit = 100;
+  let round = 0;
+
+  do {
+    const forRentRes = await fetchData(`first=100&skip=${round*resItemLimit}&sortBy=newest&isOnRent=true&isLand=true`);
+    responses.push(forRentRes);
+    round++;
+  } while (responses[round-1]?.length === resItemLimit);
+
+  const parcelsForRent = [].concat(...responses);
+  return parcelsForRent;
+}
+
+/* -------------------------------------------------------------------------- */
+/*                   Process Items for Sale/Rent data - END                   */
+/* -------------------------------------------------------------------------- */
 
 // Logger functions
 function logMessage(message) {
