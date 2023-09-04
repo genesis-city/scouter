@@ -395,7 +395,10 @@ function processParcel(item, parcelsForSaleRent) {
           category: item.nft.category,
           name: item.nft.name,
           salePrice: item.order?.price ? item.order.price / 1e18 : null,
-          rentPricePerDay: item.rental?.periods ? item.rental.periods[0].pricePerDay / 1e18 : null,
+          rentPrice: item.rental?.periods ? item.rental.periods[0].pricePerDay / 1e18 : null,
+          featureType: 'saleRent',
+          contractAddress: item.nft.contractAddress,
+          tokenId: item.nft.tokenId,
       },
   }
   parcelsForSaleRent.push(parcelData);
@@ -413,7 +416,10 @@ function processEstate(item, parcelsForSaleRent) {
               size: estate.size,
               parcels: parcelsInEstate,
               salePrice: item.order?.price ? item.order.price / 1e18 : null,
-              rentPricePerDay: item.rental?.periods ? item.rental.periods[0].pricePerDay / 1e18 : null,
+              rentPrice: item.rental?.periods ? item.rental.periods[0].pricePerDay / 1e18 : null,
+              featureType: 'saleRent',
+              contractAddress: item.nft.contractAddress,
+              tokenId: item.nft.tokenId,
           },
       }
       parcelsForSaleRent.push(parcelData);
@@ -446,15 +452,20 @@ async function getParcelsForSaleRent() {
   return parcelsForSaleRent;
 }
 
-function generateSaleRentJson(coords, saleRentJsonFile) {
+function generateSaleRentJson(itemsForSaleRent, saleRentJsonFile) {
   let polygonsJson = []
-  coords.forEach(el => {
-    let intCoords = el.coords.split(',')
+  itemsForSaleRent.forEach(item => {
+    let intCoords = item.coords.split(',')
     var x = parseInt(intCoords[0]) + mapSize
     var y = parseInt(intCoords[1]) + mapSize
     x = x * parcelSize
     y = y * parcelSize
-    polygonsJson.push({"type":"Feature","geometry": {"type":"Polygon","coordinates":[[[x,y],[x,y+parcelSize],[x+parcelSize,y+parcelSize],[x+parcelSize,y],[x,y]]]}})
+    const feature = {
+      "type":"Feature",
+      "geometry": {"type":"Polygon","coordinates":[[[x,y],[x,y+parcelSize],[x+parcelSize,y+parcelSize],[x+parcelSize,y],[x,y]]]},
+      "properties": item.data,
+    }
+    polygonsJson.push(feature)
   })
 
   let saleRentJson = JSON.stringify({"type":"FeatureCollection","features":polygonsJson})
