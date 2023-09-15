@@ -544,8 +544,8 @@ async function getEstates() {
     })
     console.log(Object.entries(tilesForEstate).length, 'estates total containing', tilesInEstate.length, 'tiles');
     
-    // allPolygons includes perimeters and areas.
-    let allPolygons = []
+    const perimeterPolygons = [];
+    const areaPolygons = [];
     // const specific  = 7;
     Object.entries(tilesForEstate)/*.slice(specific,specific+1)*/.every(([estateId, tiles]) => {
       // if (estateId != "4274") { //1817 hardcore
@@ -558,7 +558,7 @@ async function getEstates() {
         perimeter.name = tiles[0].name;
         perimeter.geoType = 'perimeter';
         addCrossPointCenter(perimeter);
-        allPolygons.push(perimeter);
+        perimeterPolygons.push(perimeter);
       });
 
       const estateArea = drawEstateArea(estateId, tiles);
@@ -567,26 +567,27 @@ async function getEstates() {
         area.type = tiles[0].type;
         area.name = tiles[0].name;
         area.geoType = 'area';
-        allPolygons.push(area);
+        areaPolygons.push(area);
       });
       return true;
     })
-    parsePolygonBorders(allPolygons);
-    offsetEstatesPerimeter(allPolygons);
-    stringifyPolygonBorders(allPolygons);
+    parsePolygonBorders(perimeterPolygons);
+    offsetEstatesPerimeter(perimeterPolygons);
+    stringifyPolygonBorders(perimeterPolygons);
     // DEBUG
     // console.log("allPolygons[1]:");
     // console.log(allPolygons[1]);
     // let mocked = mockEstate()
     // estates.push(drawEstatePerimeter(mocked.nft.data.estate.parcels))
 
-    console.log("estates length:", allPolygons.length)
+    console.log("estates length:", areaPolygons.length);
     
     // draw to image using canvas
     // drawPolygon(allPolygons[0]);
     
-    generateEstatesJSON(allPolygons)
-    process.exit()
+    generateEstatesJSON(perimeterPolygons);
+    generateEstatesJSON(areaPolygons);
+    process.exit();
   } catch(err) {
     logMessage(err)
     throw err
@@ -1081,17 +1082,28 @@ function vertexToCenters(vertex) {
 }
 
 function generateEstatesJSON(polygons) {
-  let polygonJSONs = polygons.map(polygon => {
+  const perimetersJSON = [];
+  const areasJSON = [];
+  polygons.forEach(polygon => {
     if (polygon.geoType === 'perimeter') {
-      return generatePerimeterJson(polygon);
+      const perimeterJSON = generatePerimeterJson(polygon);
+      perimetersJSON.push(perimeterJSON);
     } else if (polygon.geoType === 'area') {
-      return generateAreaJson(polygon);
+      const areaJSON = generateAreaJson(polygon);
+      areasJSON.push(areaJSON);
     }
   })
   
-  let estatesJson = JSON.stringify({"type":"FeatureCollection", "crs": {"type": "name", "properties": {"name": "ESTATES"}}, "features":polygonJSONs}, null, 0)
-  fs.writeFileSync('./output/estates.json', estatesJson);
-  console.log("Estates json created");
+  if (perimetersJSON.length > 0) {
+    const estatesPerimeterJson = JSON.stringify({"type":"FeatureCollection", "crs": {"type": "name", "properties": {"name": "ESTATES"}}, "features":perimetersJSON}, null, 0);
+    fs.writeFileSync('./output/estatesPerimeter.json', estatesPerimeterJson);
+    console.log("Estates Perimeter JSON created");
+  }
+  if (areasJSON.length > 0) {
+    const estatesAreaJson = JSON.stringify({"type":"FeatureCollection", "crs": {"type": "name", "properties": {"name": "ESTATES"}}, "features":areasJSON}, null, 0);
+    fs.writeFileSync('./output/estatesArea.json', estatesAreaJson);
+    console.log("Estates Area JSON created");
+  }
 }
 
 function generatePerimeterJson(polygon) {
