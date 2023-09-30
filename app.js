@@ -270,6 +270,9 @@ async function roundCoordsForUnity() {
     rawCoords = rawCoords.filter(el => !coords.includes(el.coords))
   }
 
+  let reportedParcels = await getReportedParcels();
+  reportedParcels ? dirtyParcels = dirtyParcels +'\n'+ reportedParcels : '';
+
   let roundedCoords = []
   dirtyParcels.map(el => {
     let intCoords = el.coords.split(',')
@@ -314,11 +317,11 @@ async function roundCoordsForUnity() {
   coordsRawStream.write(allRaw)
   coordsRawStream.end()
 
-  let reportedParcels = await getReportedParcels();
+  // let reportedParcels = await getReportedParcels();
   let mapped = sets.map(el => Array.from(el).join(';'))
   //console.log(mapped)
   let all = mapped.join('\n')
-  reportedParcels ? all = all +'\n'+ reportedParcels : '';
+  // reportedParcels ? all = all +'\n'+ reportedParcels : '';
   coordsStream.write(all)
   coordsStream.end()
   process.exit()
