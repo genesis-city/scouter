@@ -70,7 +70,7 @@ program.command('scout')
   });
 
 program.command('parcels-changelog')
-  .description('Generate coords.txt and geo.json with modified parcels')
+  .description('Generate coords.txt, raw_coords.txt, logs.txt, geo.json and saleRent.json with modified parcels')
   .action(async () => {
     let generateCoordsResult = await roundCoordsForUnity().catch(error => logMessage(error.stack))
     console.log(generateCoordsResult)
