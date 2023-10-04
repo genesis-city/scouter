@@ -70,7 +70,7 @@ program.command('scout')
   });
 
 program.command('parcels-changelog')
-  .description('Generate coords.txt, raw_coords.txt, logs.txt, geo.json and saleRent.json with modified parcels')
+  .description('Generate coords.txt, raw_coords.txt and geo.json with modified parcels')
   .action(async () => {
     let generateCoordsResult = await roundCoordsForUnity().catch(error => logMessage(error.stack))
     console.log(generateCoordsResult)
@@ -78,7 +78,7 @@ program.command('parcels-changelog')
   })
 
 program.command('draw-estates')
-  .description('Generate estates.json')
+  .description('Generate estatesPerimeter.json, estatesArea.json and saleRent.json')
   .action(async () => {
     let estatesResult = await getEstates()
     console.log(estatesResult)
@@ -241,7 +241,6 @@ async function roundCoordsForUnity() {
   var coordsStream = fs.createWriteStream('./output/coords.txt')
   var coordsRawStream = fs.createWriteStream('./output/raw_coords.txt')
   var geoJsonFile = fs.createWriteStream('./output/geo.json')
-  var saleRentJsonFile = fs.createWriteStream('./output/saleRent.json')
   logMessage("Rounding coords for unity")
   await connectToDB()
   let dirtyParcels = await getDirtyParcels()
@@ -249,8 +248,6 @@ async function roundCoordsForUnity() {
   logMessage(`Dirty parcels found: ${dirtyParcels.length}`)
   let rawCoords = dirtyParcels.slice()
   generateGeoJson(rawCoords, geoJsonFile)
-  const landsForSaleRent = await getParcelsForSaleRent();
-  generateSaleRentJson(landsForSaleRent, saleRentJsonFile);
   var groupedRawCoords = []
 
   while (rawCoords.length > 0) {
@@ -587,6 +584,12 @@ async function getEstates() {
     
     generateEstatesJSON(perimeterPolygons);
     generateEstatesJSON(areaPolygons);
+
+    // Generate saleRent.json with data of parcels/estates for sale or rent.
+    var saleRentJsonFile = fs.createWriteStream('./output/saleRent.json')
+    const landsForSaleRent = await getParcelsForSaleRent();
+    generateSaleRentJson(landsForSaleRent, saleRentJsonFile);
+
     process.exit();
   } catch(err) {
     logMessage(err)
