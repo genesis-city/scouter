@@ -423,29 +423,34 @@ function processEstate(item, parcelsForSaleRent) {
   });
 }
 
-async function getParcelsForSaleRent() {
+let itemCount = 0;
+function processItems(items, message, parcelsForSaleRent, tilesForEstate) {
+  console.log(message);
+  items.forEach(item => {
+    itemCount++
+    if (item.nft.data.parcel) processParcel(item, parcelsForSaleRent);
+    if (item.nft.data.estate) {
+      if (item.nft.data.estate.parcels.length >= 100) {
+        // When estate contains more than 100 parcels, API returns only the firsts 100 parcels.
+        //Replace incomplete parcels data with complete one.
+        const estateId = item.nft.tokenId
+        item.nft.data.estate.parcels = tilesForEstate[estateId];
+      }
+      processEstate(item, parcelsForSaleRent);
+    }
+  });
+}
+
+async function getParcelsForSaleRent(tilesForEstate) {
   const parcelsForSaleRent = [];
 
   const forSale = await fetchData('first=1000&skip=0&sortBy=newest&isOnSale=true&isLand=true');
   const forRent = await getParcelsForRent();
-  let itemCount = 0;
 
-  logMessage('Processing Items for Sale . . .');
-  forSale.forEach(item => {
-      itemCount++
-      if (item.nft.data.parcel) processParcel(item, parcelsForSaleRent);
-      if (item.nft.data.estate) processEstate(item, parcelsForSaleRent);
-  });
+  processItems(forSale, 'Processing Items for Sale . . .', parcelsForSaleRent, tilesForEstate);
+  processItems(forRent.filter((item) => !item.order), 'Processing Items for Rent . . .', parcelsForSaleRent, tilesForEstate);
 
-  logMessage('Processing Items for Rent . . .');
-  forRent.forEach(item => {
-      if (!item.order) {
-          itemCount++
-          if (item.nft.data.parcel) processParcel(item, parcelsForSaleRent);
-          if (item.nft.data.estate) processEstate(item, parcelsForSaleRent);
-      }
-  });
-  logMessage(`There are ${itemCount} items for Sale/Rent, making a total of ${parcelsForSaleRent.length} parcels in Decentraland's marketplace.`);
+  logMessage(`There are ${itemCount} items for Sale/Rent, making a total of ${parcelsForSaleRent.length} parcels available at Decentraland's marketplace.`);
   return parcelsForSaleRent;
 }
 
@@ -539,7 +544,7 @@ async function getEstates() {
       tilesForEstate[info.estateId].push(info)
       return true;
     })
-    console.log(Object.entries(tilesForEstate).length, 'estates total containing', tilesInEstate.length, 'tiles');
+    logMessage(`${Object.entries(tilesForEstate).length} estates total containing ${tilesInEstate.length} tiles`);
     
     const perimeterPolygons = [];
     const areaPolygons = [];
@@ -577,7 +582,7 @@ async function getEstates() {
     // let mocked = mockEstate()
     // estates.push(drawEstatePerimeter(mocked.nft.data.estate.parcels))
 
-    console.log("estates length:", areaPolygons.length);
+    console.log("There are a total of: ", areaPolygons.length, " estates.");
     
     // draw to image using canvas
     // drawPolygon(allPolygons[0]);
@@ -586,8 +591,17 @@ async function getEstates() {
     generateEstatesJSON(areaPolygons);
 
     // Generate saleRent.json with data of parcels/estates for sale or rent.
+    const formatedTilesForEstate = {};
+    for (const key in tilesForEstate) {
+      if (Object.hasOwnProperty.call(tilesForEstate, key)) {
+        formatedTilesForEstate[key] = tilesForEstate[key].map(item => ({
+          x: item.x,
+          y: item.y
+        }));
+      }
+    }
     var saleRentJsonFile = fs.createWriteStream('./output/saleRent.json')
-    const landsForSaleRent = await getParcelsForSaleRent();
+    const landsForSaleRent = await getParcelsForSaleRent(formatedTilesForEstate);
     generateSaleRentJson(landsForSaleRent, saleRentJsonFile);
 
     process.exit();
