@@ -271,7 +271,7 @@ async function roundCoordsForUnity() {
   }
 
   let reportedParcels = await getReportedParcels();
-  reportedParcels ? dirtyParcels = dirtyParcels +'\n'+ reportedParcels : '';
+  dirtyParcels = dirtyParcels.concat(reportedParcels);
 
   let roundedCoords = []
   dirtyParcels.map(el => {
@@ -317,18 +317,15 @@ async function roundCoordsForUnity() {
   coordsRawStream.write(allRaw)
   coordsRawStream.end()
 
-  // let reportedParcels = await getReportedParcels();
   let mapped = sets.map(el => Array.from(el).join(';'))
-  //console.log(mapped)
   let all = mapped.join('\n')
-  // reportedParcels ? all = all +'\n'+ reportedParcels : '';
   coordsStream.write(all)
   coordsStream.end()
   process.exit()
 }
 
 async function getReportedParcels() {
-  let reportedParcels;
+  let reportedParcels = [];
   const reportedParcelsRef = db.collection('reportedParcels');
   const snapshot = await reportedParcelsRef.where('fixed', '==', false).get();
   const batch = db.batch();
@@ -339,7 +336,7 @@ async function getReportedParcels() {
   }
   // Get Reported Parcels
   snapshot.forEach(doc => {
-      reportedParcels ? reportedParcels = reportedParcels + '\n' + doc.data().location : reportedParcels = doc.data().location
+      reportedParcels.push({coords: doc.data().location.replace(/\n/g, '')})
       // Update the document
       batch.update(doc.ref, {
           fixed: true,
@@ -347,7 +344,7 @@ async function getReportedParcels() {
       logMessage(`Reported parcel at: ${doc.data().location}`);
   });
 
-  // Commit the batch. Update Review status
+  // Commit the batch. Update Review status on db
   await batch.commit();
 
   return reportedParcels;
