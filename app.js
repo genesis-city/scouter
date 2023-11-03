@@ -336,7 +336,7 @@ async function getReportedParcels() {
   }
   // Get Reported Parcels
   snapshot.forEach(doc => {
-      reportedParcels.push({coords: doc.data().location.replace(/\n/g, '')})
+      reportedParcels.push({coords: doc.data().location.replace(/\n/g, ''), id: doc.data().location})
       // Update the document
       batch.update(doc.ref, {
           fixed: true,
