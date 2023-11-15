@@ -268,7 +268,9 @@ async function roundCoordsForUnity() {
   }
 
   let reportedParcels = await getReportedParcels();
-  dirtyParcels = dirtyParcels.concat(reportedParcels);
+  if (reportedParcels){
+    dirtyParcels = dirtyParcels.concat(reportedParcels);
+  }
 
   let roundedCoords = []
   dirtyParcels.map(el => {
