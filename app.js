@@ -97,6 +97,13 @@ program.command('update-games')
     getGamesData();
   })
 
+program.command('update-places')
+  .description('Generate games.json')
+  .action(async () => {
+    updatePOIsData();
+    getGamesData();
+  })
+
 // program.command('delete-database')
 //   .description('WARNING: Delete all database')
 //   .action(async () => {
