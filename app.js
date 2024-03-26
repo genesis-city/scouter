@@ -91,6 +91,19 @@ program.command('update-pois')
     updatePOIsData();
   })
 
+program.command('update-games')
+  .description('Generate games.json')
+  .action(async () => {
+    getGamesData();
+  })
+
+program.command('update-places')
+  .description('Generate games.json')
+  .action(async () => {
+    updatePOIsData();
+    getGamesData();
+  })
+
 // program.command('delete-database')
 //   .description('WARNING: Delete all database')
 //   .action(async () => {
@@ -1328,7 +1341,7 @@ function updatePOIsData() {
             title: 'POIsData',
             data: remainedPOIs,
           }
-          exportJSON(POIsData);
+          exportJSON(POIsData, 'pois');
       })
       .catch(err => logMessage(err));
   })
@@ -1384,16 +1397,76 @@ function readInvalidPOIsList() {
   return invalidPOIsArray
 }
 
-function exportJSON(data) {
+function exportJSON(data, type) {
   const jsonData = JSON.stringify(data);
   const fs = require('fs');
 
-  fs.writeFile('./output/pois.json', jsonData, (err) => {
+  fs.writeFile(`./output/${type}.json`, jsonData, (err) => {
   if (err) throw err;
-  logMessage('POIsData saved to file ./output/pois.json!');
+  logMessage(`${type.charAt(0).toUpperCase() + type.slice(1)} data saved to file ./output/${type}.json!`);
   });
 }
 
 /* -------------------------------------------------------------------------- */
 /*                           Points Of Interest END                           */
+/* -------------------------------------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+/*                                 Games START                                */
+/* -------------------------------------------------------------------------- */
+
+async function getGamesData() {
+  /* ------------------------- Build game data EndPoints ------------------------ */
+  // Games data EndPoint has a limit response of 100 element. We need to split the request to obtain all the elements.
+  const params = 'only_highlighted=false&only_favorites=false&order_by=like_score&order=desc&categories=game&only_view_category=game&limit=100';
+  const limit = 100;
+  let offset = 0;
+  let gamesFound = [];
+
+  try {
+    while (true) {
+      const url = `${metaDataBaseURL}${params}&offset=${offset}`
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (data.data.length === 0) {
+        break; // No more data to fetch
+      }
+
+      gamesFound = gamesFound.concat(data.data);
+      offset += 100;
+    }
+
+    logMessage('\n/* --------------------------- Games --------------------------- */')
+    logMessage(`Games found: ${gamesFound.length}`);
+
+    const formatedGameData = formatGamesData(gamesFound);
+    const gamesData = {
+      title: 'gamesData',
+      data: formatedGameData,
+    }
+    exportJSON(gamesData, 'games');
+  } catch (error) {
+    console.error('Error fetching places:', error);
+    return [];
+  }
+
+}
+function formatGamesData(gamesFound) {
+  const formatedData = [];
+  gamesFound.forEach(element => {
+      const locationString = element.base_position.split(',');
+      const locationNumber = locationString.map(coord => {
+        return parseInt(coord);
+      })
+      formatedData.push({
+        lon: locationNumber[0],
+        lat: locationNumber[1],
+        title: element.title,
+        description: element.description,
+      })
+  });
+  return formatedData;
+}
+/* -------------------------------------------------------------------------- */
+/*                                  Games END                                 */
 /* -------------------------------------------------------------------------- */
