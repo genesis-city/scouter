@@ -97,6 +97,12 @@ program.command('update-games')
     getGamesData();
   })
 
+program.command('update-art')
+  .description('Generate art.json')
+  .action(async () => {
+    getArtData();
+  })
+
 program.command('update-places')
   .description('Generate games.json')
   .action(async () => {
