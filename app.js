@@ -108,6 +108,7 @@ program.command('update-places')
   .action(async () => {
     updatePOIsData();
     getGamesData();
+    getArtData();
   })
 
 // program.command('delete-database')
