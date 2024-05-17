@@ -104,7 +104,7 @@ program.command('update-art')
   })
 
 program.command('update-places')
-  .description('Generate games.json')
+  .description('Generate: pois.json, games.json and art.json')
   .action(async () => {
     updatePOIsData();
     getGamesData();
