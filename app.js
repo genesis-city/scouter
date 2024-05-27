@@ -97,11 +97,18 @@ program.command('update-games')
     getGamesData();
   })
 
+program.command('update-art')
+  .description('Generate art.json')
+  .action(async () => {
+    getArtData();
+  })
+
 program.command('update-places')
-  .description('Generate games.json')
+  .description('Generate: pois.json, games.json and art.json')
   .action(async () => {
     updatePOIsData();
     getGamesData();
+    getArtData();
   })
 
 // program.command('delete-database')
@@ -1469,4 +1476,63 @@ function formatGamesData(gamesFound) {
 }
 /* -------------------------------------------------------------------------- */
 /*                                  Games END                                 */
+/* -------------------------------------------------------------------------- */
+/* -------------------------------------------------------------------------- */
+/*                                  Art START                                 */
+/* -------------------------------------------------------------------------- */
+async function getArtData() {
+  /* ------------------------- Build art data EndPoints ------------------------ */
+  // Art data EndPoint has a limit response of 100 element. We need to split the request to obtain all the elements.
+  const params = 'only_highlighted=false&only_favorites=false&order_by=like_score&order=desc&categories=art&only_view_category=art&limit=100';
+  const limit = 100;
+  let offset = 0;
+  let artFound = [];
+
+  try {
+    while (true) {
+      const url = `${metaDataBaseURL}${params}&offset=${offset}`
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (data.data.length === 0) {
+        break; // No more data to fetch
+      }
+
+      artFound = artFound.concat(data.data);
+      offset += 100;
+    }
+
+    logMessage('\n/* --------------------------- Art --------------------------- */')
+    logMessage(`Art venues found: ${artFound.length}`);
+
+    const formatedArtData = formatArtData(artFound);
+    const artData = {
+      title: 'artData',
+      data: formatedArtData,
+    }
+    exportJSON(artData, 'art');
+  } catch (error) {
+    console.error('Error fetching places:', error);
+    return [];
+  }
+
+}
+function formatArtData(artFound) {
+  const formatedData = [];
+  artFound.forEach(element => {
+      const locationString = element.base_position.split(',');
+      const locationNumber = locationString.map(coord => {
+        return parseInt(coord);
+      })
+      formatedData.push({
+        lon: locationNumber[0],
+        lat: locationNumber[1],
+        title: element.title,
+        description: element.description,
+      })
+  });
+  return formatedData;
+}
+/* -------------------------------------------------------------------------- */
+/*                                   Art END                                  */
 /* -------------------------------------------------------------------------- */
